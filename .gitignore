@@ -1,0 +1,31 @@
+# Build outputs
+bin/
+bin_out/
+obj/
+
+# Local IDE/agent state
+.forge/
+.vscode/
+
+# Generated analysis output
+graphify-out/
+
+# Temporary reverse-engineering and probe files
+.tmp_*
+*.tmp
+
+# Runtime logs and local databases
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# Python/node caches
+__pycache__/
+*.py[cod]
+node_modules/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini

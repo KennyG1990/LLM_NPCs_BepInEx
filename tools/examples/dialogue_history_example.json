@@ -1,0 +1,10 @@
+[
+    {
+        "Role": "user",
+        "Content": "Elias: Have you seen the new construction?"
+    },
+    {
+        "Role": "assistant",
+        "Content": "Aldric: Yes, it looks sturdy."
+    }
+]

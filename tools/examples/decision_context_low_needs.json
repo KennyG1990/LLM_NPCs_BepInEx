@@ -1,0 +1,99 @@
+{
+    "id": "npc-001",
+    "name": "Aldric",
+    "age": 31,
+    "gender": "male",
+    "background_or_role": "woodcutter",
+    "pseudonym": "Oakhand",
+    "health": {
+        "current": 82,
+        "max": 100,
+        "status_effects": [
+            "wet"
+        ]
+    },
+    "mood": "strained",
+    "mood_score": 44,
+    "vitals": {
+        "pain": "minor",
+        "hunger_state": "hungry"
+    },
+    "states": [
+        "working",
+        "cold"
+    ],
+    "needs": {
+        "food": 18,
+        "water": 27,
+        "rest": 22,
+        "recreation": 34,
+        "comfort": 40,
+        "beauty": 21,
+        "privacy": 36
+    },
+    "profession": "woodcutting",
+    "skills": {
+        "woodcutting": 13,
+        "construction": 8,
+        "botany": 4
+    },
+    "skill_experience": {
+        "woodcutting": 845.5,
+        "construction": 313.2
+    },
+    "traits": [
+        "hardworking",
+        "reserved"
+    ],
+    "perks": [
+        "sturdy"
+    ],
+    "background_tags": [
+        "frontier",
+        "laborer"
+    ],
+    "equipment": {
+        "weapon": "iron_axe",
+        "armor": "padded_jacket",
+        "helmet": "none",
+        "clothing": "wool_tunic"
+    },
+    "inventory": [
+        "smoked_meat",
+        "healing_herbs"
+    ],
+    "current_activity": {
+        "type": "haul",
+        "description": "Moving logs to stockpile before storm",
+        "target": "oak_logs",
+        "progress": 0.42
+    },
+    "work_priorities": {
+        "woodcutting": 1,
+        "hauling": 2,
+        "construction": 3
+    },
+    "environment": {
+        "position": {
+            "x": 104.2,
+            "y": 12.0,
+            "z": 58.7
+        },
+        "room": "courtyard",
+        "time_of_day": "afternoon",
+        "weather": "rain",
+        "nearby_threats": []
+    },
+    "relationships": {
+        "npc-002": {
+            "npc_id": "npc-002",
+            "opinion": 65,
+            "type": "friend",
+            "trust": 58
+        }
+    },
+    "reputation": {
+        "colony": 24.5,
+        "raiders": -12.0
+    }
+}

@@ -1,0 +1,922 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
+using BepInEx;
+using BepInEx.Configuration;
+using BepInEx.Logging;
+using HarmonyLib;
+using UnityEngine;
+
+namespace GoingMedieval.LLM_NPCs
+{
+    /// <summary>
+    /// BepInEx plugin entry point for LLM NPCs mod.
+    /// Hooks into Going Medieval's settler AI system to enable LLM-driven decision making.
+    /// </summary>
+    [BepInPlugin(PluginInfo.PLUGIN_GUID, PluginInfo.PLUGIN_NAME, PluginInfo.PLUGIN_VERSION)]
+    public class LLMNPCsPlugin : BaseUnityPlugin
+    {
+        // Use PluginInfo constants for consistency
+        public const string PLUGIN_GUID = PluginInfo.PLUGIN_GUID;
+        public const string PLUGIN_NAME = PluginInfo.PLUGIN_NAME;
+        public const string PLUGIN_VERSION = PluginInfo.PLUGIN_VERSION;
+
+        internal static ManualLogSource Log;
+        internal static LLMNPCsPlugin Instance;
+
+        // Configuration
+        public ConfigEntry<string> ApiKey { get; private set; }
+        public ConfigEntry<string> Model { get; private set; }
+        public ConfigEntry<string> ModelNpcDecisions { get; private set; }
+        public ConfigEntry<string> ModelPlayerChat { get; private set; }
+        public ConfigEntry<string> ModelNpcToNpcChat { get; private set; }
+        public ConfigEntry<float> Temperature { get; private set; }
+        public ConfigEntry<float> DecisionInterval { get; private set; }
+        public ConfigEntry<bool> EnableFullAutonomy { get; private set; }
+        public ConfigEntry<bool> EnableMod { get; private set; }
+        public ConfigEntry<bool> LogDecisions { get; private set; }
+        public ConfigEntry<KeyboardShortcut> DialogueHotkey { get; private set; }
+        public ConfigEntry<KeyboardShortcut> SocialHubHotkey { get; private set; }
+        public ConfigEntry<bool> EnablePromptTracing { get; private set; }
+        public ConfigEntry<bool> PromptMonitorVisible { get; private set; }
+        public ConfigEntry<KeyboardShortcut> PromptMonitorHotkey { get; private set; }
+        public ConfigEntry<bool> OpenRouterEnableProviderOverride { get; private set; }
+        public ConfigEntry<string> OpenRouterDataCollectionMode { get; private set; }
+        public ConfigEntry<string> OpenRouterFallbackModels { get; private set; }
+        public ConfigEntry<float> OpenRouterPolicyErrorLogCooldownSeconds { get; private set; }
+
+        // Core Systems
+        internal LLMClient LLMClient { get; private set; }
+        internal NPCRegistry NPCRegistry { get; private set; }
+        internal DecisionEngine DecisionEngine { get; private set; }
+        internal MemoryManager MemoryManager { get; private set; }
+        internal DialogueManager DialogueManager { get; private set; }
+        internal MenuIntegration MenuIntegration { get; private set; }
+        
+        // Social Systems (NPC-to-NPC interactions)
+        internal RelationshipSystem RelationshipSystem { get; private set; }
+        internal ChatBubbleManager ChatBubbleManager { get; private set; }
+        internal NPCToNPCDialogueManager NPCToNPCDialogueManager { get; private set; }
+        internal SocialHubWindow SocialHubWindow { get; private set; }
+        internal PromptDebugMonitorWindow PromptDebugMonitorWindow { get; private set; }
+        private readonly HashSet<string> _activeDecisionRequests = new HashSet<string>();
+        private DateTime _lastColonyInfluenceUtc = DateTime.MinValue;
+        private bool _colonyInfluenceInFlight;
+        private const double ColonyInfluenceIntervalSeconds = 60d;
+
+        private void OnDestroy()
+        {
+            Log.LogInfo("[Plugin] Shutting down...");
+            
+            try
+            {
+                if (MenuIntegration != null)
+                {
+                    Destroy(MenuIntegration.gameObject);
+                }
+                RelationshipSystem?.Dispose();
+                MemoryManager?.Dispose();
+                LLMClient?.Dispose();
+                PromptTrace.Dispose();
+                _logFile?.Close();
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[Plugin] Error during shutdown: {ex}");
+                File.AppendAllText(
+                    Path.Combine(Application.persistentDataPath, "LLM_NPCs", "crash.log"),
+                    $"[{DateTime.UtcNow}] Shutdown error: {ex}\n");
+            }
+        }
+
+        private void SetupFileLogging()
+        {
+            try
+            {
+                var logDir = Path.Combine(Application.persistentDataPath, "LLM_NPCs", "logs");
+                Directory.CreateDirectory(logDir);
+                _logDirectory = logDir;
+                var logPath = Path.Combine(logDir, $"mod_{DateTime.Now:yyyyMMdd_HHmmss}.log");
+                _logFile = new StreamWriter(logPath, true);
+                _logFile.WriteLine($"[{DateTime.UtcNow}] LLM NPCs v{PLUGIN_VERSION} started");
+                _logFile.WriteLine($"[{DateTime.UtcNow}] Game version: {Application.unityVersion}");
+                _logFile.WriteLine($"[{DateTime.UtcNow}] Platform: {Application.platform}");
+                _logFile.Flush();
+                Log.LogInfo($"[Plugin] Log file: {logPath}");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[Plugin] Failed to setup file logging: {ex}");
+            }
+        }
+
+        public static void LogToFile(string message)
+        {
+            if (Instance?._logFile != null)
+            {
+                Instance._logFile.WriteLine($"[{DateTime.UtcNow}] {message}");
+                Instance._logFile.Flush();
+            }
+        }
+
+        private void Update()
+        {
+            AutonomyManager.Instance.IsFullAutonomyEnabled = EnableFullAutonomy?.Value ?? false;
+
+            PromptTrace.SetEnabled(EnablePromptTracing?.Value ?? true);
+
+            DialogueManager?.Update();
+            MenuIntegration?.Update();
+            
+            // Social systems update
+            ChatBubbleManager?.Update();
+            NPCToNPCDialogueManager?.Update();
+            SocialHubWindow?.Update();
+            PromptDebugMonitorWindow?.Update();
+        }
+
+        private void OnGUI()
+        {
+            DialogueManager?.OnGUI();
+            // MenuIntegration has its own OnGUI as a MonoBehaviour - Unity calls it automatically
+            
+            // Social systems GUI
+            ChatBubbleManager?.OnGUI();
+            SocialHubWindow?.OnGUI();
+            PromptDebugMonitorWindow?.OnGUI();
+        }
+
+        private StreamWriter _logFile;
+        private string _logDirectory;
+
+        private void Awake()
+        {
+            Instance = this;
+            Log = Logger;
+            
+            // Ensure plugin survives scene transitions
+            DontDestroyOnLoad(gameObject);
+
+            // Setup file logging for debugging (must be first so LogToFile works)
+            SetupFileLogging();
+            LogToFile("[Plugin:Awake] Starting initialization");
+            LogAssemblyFingerprint();
+
+            Log.LogInfo($"{PLUGIN_NAME} v{PLUGIN_VERSION} loading...");
+            Log.LogInfo($"Game version: {Application.unityVersion}");
+            Log.LogInfo($"Platform: {Application.platform}");
+
+            try
+            {
+                SetupConfiguration();
+                LogToFile("[Plugin:Awake] Configuration setup complete");
+
+                PromptTrace.Initialize(_logDirectory, EnablePromptTracing.Value);
+                LogToFile("[Plugin:Awake] PromptTrace initialized");
+                
+                if (!EnableMod.Value)
+                {
+                    Log.LogInfo("Mod is disabled in config. Not initializing.");
+                    LogToFile("[Plugin:Awake] Mod disabled in config, returning early");
+                    return;
+                }
+
+                InitializeSystems();
+                LogToFile("[Plugin:Awake] Systems initialized");
+
+                // Initialize Harmony and apply patches
+                var harmony = new Harmony(PLUGIN_GUID);
+                harmony.PatchAll();
+                Log.LogInfo("[Plugin:Awake] Harmony patches applied successfully.");
+                LogToFile("[Plugin:Awake] Harmony patches applied successfully.");
+                
+                // Start the main loop
+                StartCoroutine(MainLoop());
+                LogToFile("[Plugin:Awake] Main loop started");
+
+                Log.LogInfo($"{PLUGIN_NAME} loaded successfully!");
+                LogToFile("[Plugin:Awake] Plugin loaded successfully");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"Critical error during initialization: {ex}");
+                Log.LogError("Mod will not function. Check DEBUGGING.md for help.");
+                LogToFile($"[Plugin:Awake] CRITICAL ERROR: {ex}");
+                enabled = false; // Disable the plugin component
+            }
+        }
+
+        private void SetupConfiguration()
+        {
+            LogToFile("[Plugin:SetupConfiguration] Starting");
+            
+            // Ensure ConfigurationManager uses a key that doesn't conflict with the game
+            // Going Medieval uses F1 for building menu, so we use Insert instead
+            var configManagerConfig = Config.Bind(
+                "General",
+                "ConfigManagerHotkey",
+                "Insert",
+                "Hotkey to open Configuration Manager (default: Insert). Change in com.bepis.bepinex.configurationmanager.cfg"
+            );
+            
+            // General settings
+            EnableMod = Config.Bind(
+                "General",
+                "EnableMod",
+                true,
+                "Enable or disable the LLM NPCs mod"
+            );
+
+            // LLM Settings
+            ApiKey = Config.Bind(
+                "LLM",
+                "ApiKey",
+                "",
+                "OpenRouter API key (encrypted storage recommended)"
+            );
+
+            Model = Config.Bind(
+                "LLM",
+                "Model",
+                LLMClient.FreeModels[0],
+                "Fallback/default LLM model if per-task model is blank. Free models: " + string.Join(", ", LLMClient.FreeModels)
+            );
+
+            ModelNpcDecisions = Config.Bind(
+                "LLM",
+                "ModelNpcDecisions",
+                LLMClient.RecommendedTaskModels["npc_decisions"],
+                "Model for autonomous NPC behaviour decisions (high-frequency). Recommended: google/gemini-2.0-flash-lite-001"
+            );
+
+            ModelPlayerChat = Config.Bind(
+                "LLM",
+                "ModelPlayerChat",
+                LLMClient.RecommendedTaskModels["player_chat"],
+                "Model for player<->NPC conversations (best quality). Recommended: openai/gpt-oss-120b:free"
+            );
+
+            ModelNpcToNpcChat = Config.Bind(
+                "LLM",
+                "ModelNpcToNpcChat",
+                LLMClient.RecommendedTaskModels["npc_to_npc"],
+                "Model for NPC<->NPC autonomous dialogue (bulk, low cost). Recommended: meta-llama/llama-3.2-3b-instruct:free"
+            );
+
+            Temperature = Config.Bind(
+                "LLM",
+                "Temperature",
+                0.7f,
+                "Temperature for LLM responses (0.0 - 1.0)"
+            );
+
+            OpenRouterEnableProviderOverride = Config.Bind(
+                "API",
+                "OpenRouterEnableProviderOverride",
+                false,
+                "If true, includes provider.data_collection block in OpenRouter payloads to enforce privacy. Default is false."
+            );
+
+            OpenRouterDataCollectionMode = Config.Bind(
+                "LLM",
+                "OpenRouterDataCollectionMode",
+                "allow",
+                "OpenRouter provider.data_collection mode: allow or deny"
+            );
+
+            OpenRouterFallbackModels = Config.Bind(
+                "LLM",
+                "OpenRouterFallbackModels",
+                string.Empty,
+                "Comma-separated fallback model IDs to try on OpenRouter data policy mismatch (404)"
+            );
+
+            OpenRouterPolicyErrorLogCooldownSeconds = Config.Bind(
+                "LLM",
+                "OpenRouterPolicyErrorLogCooldownSeconds",
+                30f,
+                "Cooldown in seconds to suppress repeated identical OpenRouter policy mismatch logs"
+            );
+
+            DecisionInterval = Config.Bind(
+                "Gameplay",
+                "DecisionInterval",
+                10f,
+                "Seconds between LLM decisions for each NPC"
+            );
+
+            EnableFullAutonomy = Config.Bind(
+                "Gameplay",
+                "EnableFullAutonomy",
+                false,
+                "If true, LLM decisions are executed as blueprints/jobs. If false, NPCs will only reason and complain using dialogue bubbles."
+            );
+
+            LogDecisions = Config.Bind(
+                "Debug",
+                "LogDecisions",
+                true,
+                "Log NPC decisions to console"
+            );
+
+            EnablePromptTracing = Config.Bind(
+                "Debug",
+                "EnablePromptTracing",
+                true,
+                "Enable detailed prompt/response tracing to dedicated trace logs and monitor"
+            );
+
+            PromptMonitorVisible = Config.Bind(
+                "Debug",
+                "ShowPromptDebugMonitor",
+                false,
+                "Show the prompt debug monitor window on startup"
+            );
+
+            DialogueHotkey = Config.Bind(
+                "Hotkeys",
+                "DialogueHotkey",
+                new KeyboardShortcut(KeyCode.BackQuote),
+                "Hotkey to open dialogue with nearest settler (default: ` backtick/tilde key)"
+            );
+
+            SocialHubHotkey = Config.Bind(
+                "Hotkeys",
+                "SocialHubHotkey",
+                new KeyboardShortcut(KeyCode.Y),
+                "Hotkey to open the Social Hub window (default: Y)"
+            );
+
+            PromptMonitorHotkey = Config.Bind(
+                "Hotkeys",
+                "PromptDebugMonitorHotkey",
+                new KeyboardShortcut(KeyCode.F8),
+                "Hotkey to toggle prompt debug monitor visibility (default: F8)"
+            );
+
+            LogToFile("[Plugin:SetupConfiguration] Complete");
+        }
+
+        private void InitializeSystems()
+        {
+            LogToFile("[Plugin:InitializeSystems] Starting");
+            try
+            {
+                MemoryManager = new MemoryManager();
+                Log.LogInfo("[MemoryManager] Hierarchical SQLite memory system initialized");
+                LogToFile("[Plugin:InitializeSystems] MemoryManager created");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[MemoryManager] Failed to initialize: {ex.Message}");
+                Log.LogWarning("[MemoryManager] Continuing without persistent memory. Decisions will not be remembered.");
+                LogToFile($"[Plugin:InitializeSystems] MemoryManager ERROR: {ex.Message}");
+                MemoryManager = null; // Will be null-checked later
+            }
+
+            NPCRegistry = new NPCRegistry();
+            LogToFile("[Plugin:InitializeSystems] NPCRegistry created");
+            
+            try
+            {
+                LLMClient = new LLMClient(
+                    ApiKey.Value,
+                    Model.Value,
+                    Temperature.Value,
+                    OpenRouterEnableProviderOverride.Value,
+                    OpenRouterDataCollectionMode.Value,
+                    OpenRouterFallbackModels.Value,
+                    OpenRouterPolicyErrorLogCooldownSeconds.Value,
+                    ModelNpcDecisions.Value,
+                    ModelPlayerChat.Value,
+                    ModelNpcToNpcChat.Value);
+
+                if (string.IsNullOrEmpty(ApiKey.Value))
+                {
+                    Log.LogWarning("[LLMClient] API key not configured. Mod will not make LLM decisions.");
+                    Log.LogWarning("[LLMClient] Click MOD CONFIG button in main menu to set up.");
+                    LogToFile("[Plugin:InitializeSystems] LLMClient created but no API key");
+                }
+                else
+                {
+                    LogToFile("[Plugin:InitializeSystems] LLMClient created with API key");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[LLMClient] Failed to initialize: {ex.Message}");
+                LogToFile($"[Plugin:InitializeSystems] LLMClient ERROR: {ex.Message}");
+            }
+
+            // Inject LLM client into memory manager so it can do LLM summarization
+            MemoryManager?.SetLLMClient(LLMClient);
+
+            DecisionEngine = new DecisionEngine(LLMClient, NPCRegistry, MemoryManager);
+            LogToFile("[Plugin:InitializeSystems] DecisionEngine created");
+
+            // Initialize dialogue system
+            try
+            {
+                DialogueManager = new DialogueManager(LLMClient, MemoryManager, NPCRegistry, DialogueHotkey);
+                Log.LogInfo($"[DialogueManager] Dialogue system initialized - Press {DialogueHotkey.Value.MainKey} to talk to settlers");
+                LogToFile("[Plugin:InitializeSystems] DialogueManager created");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[DialogueManager] Failed to initialize: {ex.Message}");
+                LogToFile($"[Plugin:InitializeSystems] DialogueManager ERROR: {ex.Message}");
+            }
+
+            // Initialize social systems
+            try
+            {
+                RelationshipSystem = new RelationshipSystem(MemoryManager);
+                Log.LogInfo("[RelationshipSystem] NPC relationship system initialized");
+                LogToFile("[Plugin:InitializeSystems] RelationshipSystem created");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[RelationshipSystem] Failed to initialize: {ex.Message}");
+                LogToFile($"[Plugin:InitializeSystems] RelationshipSystem ERROR: {ex.Message}");
+            }
+
+            try
+            {
+                ChatBubbleManager = new ChatBubbleManager(duration: 5f, maxDistance: 25f);
+                Log.LogInfo("[ChatBubbleManager] 3D chat bubble system initialized");
+                LogToFile("[Plugin:InitializeSystems] ChatBubbleManager created");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[ChatBubbleManager] Failed to initialize: {ex.Message}");
+                LogToFile($"[Plugin:InitializeSystems] ChatBubbleManager ERROR: {ex.Message}");
+            }
+
+            try
+            {
+                NPCToNPCDialogueManager = new NPCToNPCDialogueManager(
+                    LLMClient, RelationshipSystem, MemoryManager, ChatBubbleManager, NPCRegistry);
+                Log.LogInfo("[NPCToNPCDialogueManager] NPC-to-NPC conversation system initialized");
+                LogToFile("[Plugin:InitializeSystems] NPCToNPCDialogueManager created");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[NPCToNPCDialogueManager] Failed to initialize: {ex.Message}");
+                LogToFile($"[Plugin:InitializeSystems] NPCToNPCDialogueManager ERROR: {ex.Message}");
+            }
+
+            try
+            {
+                SocialHubWindow = new SocialHubWindow(
+                    DialogueManager, NPCToNPCDialogueManager, RelationshipSystem, ChatBubbleManager, SocialHubHotkey);
+                Log.LogInfo($"[SocialHubWindow] Social hub UI initialized - Press {SocialHubHotkey.Value.MainKey} to open");
+                LogToFile("[Plugin:InitializeSystems] SocialHubWindow created");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[SocialHubWindow] Failed to initialize: {ex.Message}");
+                LogToFile($"[Plugin:InitializeSystems] SocialHubWindow ERROR: {ex.Message}");
+            }
+
+            try
+            {
+                PromptDebugMonitorWindow = new PromptDebugMonitorWindow(PromptMonitorVisible, PromptMonitorHotkey);
+                Log.LogInfo($"[PromptDebugMonitor] Initialized - Press {PromptMonitorHotkey.Value.MainKey} to toggle");
+                LogToFile("[Plugin:InitializeSystems] PromptDebugMonitorWindow created");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[PromptDebugMonitor] Failed to initialize: {ex.Message}");
+                LogToFile($"[Plugin:InitializeSystems] PromptDebugMonitorWindow ERROR: {ex.Message}");
+            }
+
+            // Initialize menu integration
+            try
+            {
+                var menuGO = new GameObject("LLM_NPCs_MenuIntegration");
+                menuGO.transform.SetParent(transform);
+                MenuIntegration = menuGO.AddComponent<MenuIntegration>();
+                MenuIntegration.Initialize(
+                    LLMClient,
+                    Model,
+                    ApiKey,
+                    Temperature,
+                    DecisionInterval,
+                    EnableFullAutonomy,
+                    EnableMod,
+                    LogDecisions
+                );
+                Log.LogInfo("[MenuIntegration] Menu system initialized - Look for MOD CONFIG button in main menu");
+                LogToFile("[Plugin:InitializeSystems] MenuIntegration created");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"[MenuIntegration] Failed to initialize: {ex.Message}");
+                LogToFile($"[Plugin:InitializeSystems] MenuIntegration ERROR: {ex.Message}");
+            }
+            LogToFile("[Plugin:InitializeSystems] Complete");
+        }
+
+        private IEnumerator MainLoop()
+        {
+            LogToFile("[Plugin:MainLoop] Starting, waiting 5 seconds for game init");
+            yield return new WaitForSeconds(5f); // Wait for game to initialize
+            LogToFile("[Plugin:MainLoop] Game init wait complete, entering main loop");
+
+            while (true)
+            {
+                if (EnableMod.Value)
+                {
+                    try
+                    {
+                        ProcessNPCs();
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.LogError($"Error in main loop: {ex}");
+                        LogToFile($"[Plugin:MainLoop] ERROR: {ex}");
+                    }
+                }
+                else
+                {
+                    LogToFile("[Plugin:MainLoop] Mod disabled, skipping NPC processing");
+                }
+
+                // Poll every 1 second instead of waiting the entire DecisionInterval.
+                // This allows the random jitter in NPCRegistry to organically spread out requests.
+                yield return new WaitForSeconds(1f);
+            }
+        }
+
+        private void ProcessNPCs()
+        {
+            LogToFile("[Plugin:ProcessNPCs] Finding settlers");
+            // Find all validated settlers via GameBridge
+            var settlers = GameBridge.GetValidatedSettlers();
+            LogToFile($"[Plugin:ProcessNPCs] Found {settlers.Count} validated settlers");
+
+            TryStartColonyInfluence(settlers);
+            
+            foreach (var settler in settlers)
+            {
+                if (settler == null || settler.gameObject == null)
+                    continue;
+
+                // Check if this settler should get an LLM decision
+                if (NPCRegistry.ShouldProcess(settler, DecisionInterval.Value))
+                {
+                    var id = GameBridge.GetSettlerId(settler.gameObject) ?? settler.gameObject.GetInstanceID().ToString();
+                    if (!_activeDecisionRequests.Add(id))
+                    {
+                        LogToFile($"[Plugin:ProcessNPCs] Decision already in flight for settler {id}, skipping duplicate coroutine.");
+                        continue;
+                    }
+
+                    LogToFile($"[Plugin:ProcessNPCs] Starting coroutine for settler {id} ({settler.Name})");
+                    StartCoroutine(ProcessSettlerTracked(settler, id));
+                }
+            }
+        }
+
+        private void TryStartColonyInfluence(List<Settler> settlers)
+        {
+            if (settlers == null || settlers.Count == 0 || MemoryManager == null)
+                return;
+
+            if (_colonyInfluenceInFlight)
+                return;
+
+            var now = DateTime.UtcNow;
+            if ((now - _lastColonyInfluenceUtc).TotalSeconds < ColonyInfluenceIntervalSeconds)
+                return;
+
+            _lastColonyInfluenceUtc = now;
+            _colonyInfluenceInFlight = true;
+            StartCoroutine(ProcessColonyInfluence(settlers.ToList()));
+        }
+
+        private IEnumerator ProcessColonyInfluence(List<Settler> settlers)
+        {
+            try
+            {
+                var contexts = new List<NPCContext>();
+                foreach (var settler in settlers)
+                {
+                    if (settler == null || settler.gameObject == null)
+                        continue;
+
+                    var context = NPCContextExtractor.Extract(settler);
+                    if (context != null)
+                        contexts.Add(context);
+                }
+
+                if (contexts.Count == 0)
+                {
+                    LogToFile("[Plugin:ProcessColonyInfluence] No valid contexts available.");
+                    yield break;
+                }
+
+                var engine = ColonyInfluenceEngine.Instance;
+                var state = engine.ComputeColonyState(contexts);
+                var recommendation = engine.GenerateRecommendations(state);
+                string narrative = recommendation.Description;
+
+                var narrativeTask = engine.AskLLMForNarrativeAsync(LLMClient, state, recommendation);
+                while (!narrativeTask.IsCompleted)
+                    yield return null;
+
+                if (narrativeTask.Exception != null)
+                {
+                    LogToFile($"[Plugin:ProcessColonyInfluence] Narrative task failed: {narrativeTask.Exception.GetBaseException().Message}");
+                }
+                else if (!string.IsNullOrWhiteSpace(narrativeTask.Result))
+                {
+                    narrative = narrativeTask.Result;
+                }
+
+                MemoryManager.RecordColonyEvent(state, recommendation, narrative);
+                LogToFile($"[Plugin:ProcessColonyInfluence] Recorded colony recommendation: {recommendation.Type} | {recommendation.Description} | {narrative}");
+            }
+            finally
+            {
+                _colonyInfluenceInFlight = false;
+            }
+        }
+
+        private IEnumerator ProcessSettlerTracked(Settler settler, string npcId)
+        {
+            try
+            {
+                yield return ProcessSettler(settler);
+            }
+            finally
+            {
+                _activeDecisionRequests.Remove(npcId);
+                LogToFile($"[Plugin:ProcessSettlerTracked] Cleared in-flight decision for {npcId}");
+            }
+        }
+
+        private IEnumerator ProcessSettler(Settler settler)
+        {
+            if (settler == null || settler.gameObject == null)
+            {
+                LogToFile("[Plugin:ProcessSettler] Settler reference invalid, skipping");
+                yield break;
+            }
+
+            var npcId = GameBridge.GetSettlerId(settler.gameObject) ?? settler.gameObject.GetInstanceID().ToString();
+            LogToFile($"[Plugin:ProcessSettler] Processing settler {npcId} ({settler.Name})");
+            
+            // Extract context
+            var context = NPCContextExtractor.Extract(settler);
+            if (context == null)
+            {
+                LogToFile($"[Plugin:ProcessSettler] Context extraction failed for {npcId}");
+                yield break;
+            }
+
+            // Early Out: Do not process LLM decisions while the NPC is sleeping.
+            if (context.States.Contains("isSleeping"))
+            {
+                // We do not record a decision so their timer simply drifts until they wake up.
+                LogToFile($"[Plugin:ProcessSettler] {npcId} is sleeping. Skipping LLM request.");
+                yield break;
+            }
+            
+            LogToFile($"[Plugin:ProcessSettler] Context extracted for {npcId}");
+            MemoryManager?.SaveCharacterSheet(context);
+
+            // Construct RAG query from current context
+            var lowestNeed = "none";
+            if (context.Needs != null)
+            {
+                var needsMap = new Dictionary<string, float>
+                {
+                    {"food", context.Needs.Food}, {"water", context.Needs.Water},
+                    {"rest", context.Needs.Rest}, {"recreation", context.Needs.Recreation}
+                };
+                lowestNeed = needsMap.OrderBy(x => x.Value).First().Key;
+            }
+            var ragQuery = $"I am {npcId}. Activity: {context.CurrentActivity?.Type ?? "idle"}. Lowest need: {lowestNeed}.";
+            var topSkillStats = BuildTopSkillStats(context);
+            if (!string.IsNullOrWhiteSpace(topSkillStats))
+            {
+                var existingBinding = MemoryManager?.GetNpcBinding(npcId);
+                if (!string.IsNullOrWhiteSpace(existingBinding))
+                {
+                    MemoryManager.SetNpcBinding(npcId, existingBinding, string.Join(", ", context.Traits ?? new List<string>()), topSkillStats, context.Name, context.Profession);
+                }
+            }
+
+            var memoryTask = MemoryManager?.GetContextForPromptAsync(npcId, context.Profession, ragQuery);
+            if (memoryTask != null)
+            {
+                while (!memoryTask.IsCompleted) yield return null;
+                context.MemoryContext = memoryTask.Result;
+            }
+            else
+            {
+                context.MemoryContext = MemoryManager?.GetContextForPrompt(npcId, context.Profession);
+            }
+            LogToFile($"[Plugin:ProcessSettler] Memory context retrieved for {npcId}");
+
+            // Get decision from LLM
+            LogToFile($"[Plugin:ProcessSettler] Requesting decision from DecisionEngine for {npcId}");
+            var decisionTask = DecisionEngine.GetDecisionAsync(context);
+            
+            while (!decisionTask.IsCompleted)
+            {
+                yield return null;
+            }
+
+            var decision = decisionTask.Result;
+            LogToFile($"[Plugin:ProcessSettler] Decision received for {npcId}: {decision?.Action}");
+            
+            if (decision != null && decision.Success)
+            {
+                // Action Gateway: Check Autonomy Manager
+                // For now, assume all settlers belong to Player Faction (Id: 1)
+                int factionId = 1;
+                
+                if (AutonomyManager.Instance.IsFactionAutonomous(factionId))
+                {
+                    LogToFile($"[Plugin:ProcessSettler] Executing decision: {decision.Action}");
+                    // Execute the decision
+                    DecisionExecutor.Execute(settler, decision);
+                    
+                    // Show thought bubble with the NPC's reasoning (short duration)
+                    var transform = settler.GetComponent<UnityEngine.Transform>();
+                    var worldPos = transform != null ? transform.position : UnityEngine.Vector3.zero;
+                    ChatBubbleManager?.ShowBubble(npcId, settler.Name, 
+                        $"💭 {decision.Reasoning}", 
+                        worldPos,
+                        isMarried: false, 
+                        relationshipIcon: null,
+                        duration: 3.5f);
+                }
+                else
+                {
+                    LogToFile($"[Plugin:ProcessSettler] Autonomy Disabled. Discarding physical action: {decision.Action}");
+                    
+                    // Route to the complaint mechanic
+                    var transform = settler.GetComponent<UnityEngine.Transform>();
+                    var worldPos = transform != null ? transform.position : UnityEngine.Vector3.zero;
+                    
+                    string complaintText = string.IsNullOrWhiteSpace(decision.DialogueComplaint) 
+                        ? $"💭 I wish I could {decision.Action}, but I must wait..." 
+                        : decision.DialogueComplaint;
+
+                    ChatBubbleManager?.ShowBubble(npcId, settler.Name, 
+                        complaintText, 
+                        worldPos,
+                        isMarried: false, 
+                        relationshipIcon: null,
+                        duration: 5.0f);
+                }
+
+                if (LogDecisions.Value)
+                {
+                    Log.LogInfo($"[{settler.Name}] {decision.Action}: {decision.Reasoning}");
+                }
+
+                // Record decision in memory system (hierarchical SQLite)
+                var importance = CalculateDecisionImportance(decision, context);
+                MemoryManager?.RecordEvent(npcId, "decision",
+                    $"Decided to {decision.Action}: {decision.Reasoning}",
+                    importance,
+                    new Dictionary<string, object> {
+                        { "action", decision.Action },
+                        { "target", (decision.Parameters != null && decision.Parameters.ContainsKey("target")) ? decision.Parameters["target"] : null },
+                        { "location", (decision.Parameters != null && decision.Parameters.ContainsKey("location")) ? decision.Parameters["location"] : null }
+                    });
+                
+                // Record significant state changes
+                RecordStateChanges(npcId, context);
+                
+                // Legacy registry for compatibility + timer reset
+                NPCRegistry.RecordDecision(settler, decision, DecisionInterval.Value);
+                LogToFile($"[Plugin:ProcessSettler] Decision processing complete for {npcId}");
+            }
+            else
+            {
+                LogToFile($"[Plugin:ProcessSettler] Decision failed or null for {npcId}");
+                
+                // Even on failure, reset the timer so we don't spam the API infinitely
+                var idStr = GameBridge.GetSettlerId(settler.gameObject) ?? settler.gameObject.GetInstanceID().ToString();
+                NPCRegistry.RecordDecision(settler, new LLMDecision { Action = "Failed", Reasoning = "Request timed out or failed to parse." }, DecisionInterval.Value);
+            }
+        }
+
+
+        private int CalculateDecisionImportance(LLMDecision decision, NPCContext context)
+        {
+            LogToFile($"[Plugin:CalculateDecisionImportance] Action: {decision.Action}");
+            // Survival-critical decisions are most important
+            if (decision.Action == "flee" || decision.Action == "defend" ||
+                decision.Action == "seek_shelter" || decision.Action == "rest_when_critical")
+            {
+                LogToFile("[Plugin:CalculateDecisionImportance] Returning importance 10 (survival)");
+                return 10;
+            }
+            
+            // Health-related decisions
+            if (context.Health?.Overall < 50)
+            {
+                LogToFile("[Plugin:CalculateDecisionImportance] Returning importance 8 (health)");
+                return 8;
+            }
+            
+            // Need-related decisions when critical
+            var criticalNeeds = context.Needs?.GetCriticalNeeds();
+            if (criticalNeeds?.Count > 0)
+            {
+                LogToFile("[Plugin:CalculateDecisionImportance] Returning importance 7 (critical needs)");
+                return 7;
+            }
+            
+            // Social decisions
+            if (decision.Action == "socialize")
+            {
+                LogToFile("[Plugin:CalculateDecisionImportance] Returning importance 5 (social)");
+                return 5;
+            }
+            
+            LogToFile("[Plugin:CalculateDecisionImportance] Returning importance 3 (default)");
+            // Default
+            return 3;
+        }
+
+        private static string BuildTopSkillStats(NPCContext context)
+        {
+            if (context?.Skills == null || context.Skills.Count == 0) return null;
+            return string.Join(", ", context.Skills
+                .OrderByDescending(kv => kv.Value)
+                .ThenBy(kv => kv.Key)
+                .Take(6)
+                .Select(kv => $"{kv.Key}:{kv.Value}"));
+        }
+
+        private void RecordStateChanges(string npcId, NPCContext context)
+        {
+            LogToFile($"[Plugin:RecordStateChanges] Recording for {npcId}");
+            // Record critical health changes
+            if (context.Health?.Overall < 30)
+            {
+                MemoryManager?.RecordEvent(npcId, "health",
+                    $"Health critical at {context.Health.Overall}%", 9);
+                LogToFile($"[Plugin:RecordStateChanges] Recorded health critical for {npcId}");
+            }
+
+            // Record mood changes
+            if (context.Mood == "very_unhappy")
+            {
+                MemoryManager?.RecordEvent(npcId, "mood",
+                    "Experiencing severe distress", 8);
+                LogToFile($"[Plugin:RecordStateChanges] Recorded mood distress for {npcId}");
+            }
+
+            // Record danger
+            if (context.Environment?.HostilesNearby > 0)
+            {
+                MemoryManager?.RecordEvent(npcId, "danger",
+                    $"Detected {context.Environment.HostilesNearby} enemies nearby", 10);
+                LogToFile($"[Plugin:RecordStateChanges] Recorded danger for {npcId}");
+            }
+            LogToFile($"[Plugin:RecordStateChanges] Complete for {npcId}");
+        }
+
+        private void LogAssemblyFingerprint()
+        {
+            try
+            {
+                var asm = Assembly.GetExecutingAssembly();
+                var location = asm.Location;
+                var version = asm.GetName().Version?.ToString() ?? "unknown";
+                var writeUtc = !string.IsNullOrWhiteSpace(location) && File.Exists(location)
+                    ? File.GetLastWriteTimeUtc(location).ToString("O")
+                    : "unknown";
+
+                Log.LogInfo($"[Plugin] Assembly fingerprint: location='{location}', version='{version}', fileLastWriteUtc='{writeUtc}'");
+                LogToFile($"[Plugin:AssemblyFingerprint] Location={location}");
+                LogToFile($"[Plugin:AssemblyFingerprint] Version={version}");
+                LogToFile($"[Plugin:AssemblyFingerprint] FileLastWriteUtc={writeUtc}");
+            }
+            catch (Exception ex)
+            {
+                Log.LogWarning($"[Plugin] Failed to log assembly fingerprint: {ex.Message}");
+                LogToFile($"[Plugin:AssemblyFingerprint] ERROR: {ex}");
+            }
+        }
+    }
+
+    public static class PluginInfo
+    {
+        public const string PLUGIN_GUID = "com.goingmedieval.llm_npcs";
+        public const string PLUGIN_NAME = "LLM NPCs";
+        public const string PLUGIN_VERSION = "1.0.0";
+    }
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "1",
+    "title": "Inspect workspace and create run artifacts",
+    "status": "completed",
+    "dependencies": [],
+    "blockers": [],
+    "owner": "Architect"
+  },
+  {
+    "id": "2",
+    "title": "Run verification oracle",
+    "status": "pending",
+    "dependencies": [
+      "1"
+    ],
+    "blockers": [],
+    "owner": "Orchestrator"
+  },
+  {
+    "id": "3",
+    "title": "Record green evidence and declare success",
+    "status": "pending",
+    "dependencies": [
+      "2"
+    ],
+    "blockers": [],
+    "owner": "Reviewer"
+  }
+]

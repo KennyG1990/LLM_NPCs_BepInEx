@@ -1,0 +1,70 @@
+{
+    "id": "npc-stale-01",
+    "name": "Elias",
+    "age": 28,
+    "gender": "male",
+    "background_or_role": "Tailor",
+    "pseudonym": "Eli",
+    "health": {
+        "current": 100.0,
+        "max": 100.0,
+        "status_effects": []
+    },
+    "mood": "content",
+    "mood_score": 65.0,
+    "vitals": {
+        "pain": "0.0",
+        "bleeding": "0.0"
+    },
+    "states": [],
+    "needs": {
+        "food": 80.0,
+        "water": 75.0,
+        "rest": 90.0,
+        "recreation": 60.0,
+        "comfort": 50.0,
+        "beauty": 40.0,
+        "privacy": 80.0
+    },
+    "profession": "Tailor",
+    "skills": {
+        "Tailoring": 15,
+        "Mining": 2
+    },
+    "skill_experience": {},
+    "traits": [
+        "hardworking"
+    ],
+    "perks": [],
+    "background_tags": [],
+    "equipment": {
+        "weapon": "pickaxe",
+        "armor": "none",
+        "helmet": "none",
+        "clothing": "linen shirt"
+    },
+    "inventory": [],
+    "current_activity": {
+        "type": "mining",
+        "description": "mining limestone",
+        "target": "limestone_vein",
+        "progress": 45.0
+    },
+    "work_priorities": {
+        "Tailoring": 1,
+        "Mining": 2
+    },
+    "environment": {
+        "position": {
+            "x": 10.0,
+            "y": 0.0,
+            "z": 15.0
+        },
+        "room": "outside",
+        "time_of_day": "14:30",
+        "weather": "clear",
+        "nearby_threats": []
+    },
+    "relationships": {},
+    "reputation": {}
+}

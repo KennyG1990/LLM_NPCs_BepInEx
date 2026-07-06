@@ -1,0 +1,77 @@
+{
+    "id": "npc-014",
+    "name": "Branna",
+    "age": 27,
+    "gender": "female",
+    "background_or_role": "builder",
+    "pseudonym": "Stonehand",
+    "health": {
+        "current": 71,
+        "max": 100,
+        "status_effects": [
+            "bruised"
+        ]
+    },
+    "mood": "alarmed",
+    "mood_score": 33,
+    "states": [
+        "threatened",
+        "outdoors"
+    ],
+    "needs": {
+        "food": 56,
+        "water": 64,
+        "rest": 61,
+        "recreation": 30,
+        "comfort": 35,
+        "beauty": 25,
+        "privacy": 42
+    },
+    "profession": "construction",
+    "skills": {
+        "construction": 15,
+        "melee": 6
+    },
+    "traits": [
+        "brave",
+        "pragmatic"
+    ],
+    "equipment": {
+        "weapon": "iron_mace",
+        "armor": "leather_vest",
+        "helmet": "leather_cap",
+        "clothing": "linen_tunic"
+    },
+    "inventory": [
+        "bandage",
+        "torch"
+    ],
+    "current_activity": {
+        "type": "build",
+        "description": "Raising outer wall segment",
+        "target": "limestone_wall",
+        "progress": 0.78
+    },
+    "environment": {
+        "position": {
+            "x": 140.5,
+            "y": 15.0,
+            "z": 91.2
+        },
+        "room": "outer_yard",
+        "time_of_day": "dusk",
+        "weather": "clear",
+        "nearby_threats": [
+            "raider_swordsman",
+            "raider_archer"
+        ]
+    },
+    "relationships": {
+        "npc-001": {
+            "npc_id": "npc-001",
+            "opinion": 47,
+            "type": "acquaintance",
+            "trust": 52
+        }
+    }
+}

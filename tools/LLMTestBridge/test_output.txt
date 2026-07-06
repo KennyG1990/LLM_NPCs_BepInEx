@@ -1,0 +1,57 @@
+== Preflight ==
+model: google/gemini-2.0-flash-001
+primary_model_only: true
+models_endpoint: https://openrouter.ai/api/v1/models
+preflight_ms: 327
+mod_config_path: E:\SteamLibrary\steamapps\common\Going Medieval\BepInEx\config\com.goingmedieval.llm_npcs.cfg
+preflight_result: valid
+
+== Context Validation ==
+issues_count: 0
+
+== Request Metadata ==
+endpoint: https://openrouter.ai/api/v1/chat/completions
+mode: decision
+model: google/gemini-2.0-flash-001
+data_collection: allow
+authorization: Bearer sk-or-...ba91
+messages_count: 2
+payload_chars: 2431
+=== GENERATED SYSTEM PROMPT ===
+=== Ealdred the Wise's Current State ===
+Identity: Ealdred the Wise (Id=deep_stats_tester)
+Demographics: age=42, gender=male, background=village elder, pseudonym=none
+Health: 100/100, mood=content (75/100)
+Needs: food=80, water=85, rest=90, recreation=60, comfort=50, beauty=40, privacy=30
+Vitals: pain=0.0, bleeding=0.0, MovementSpeed=5.2, HungerTolerance=2.0
+States: isDrafted
+Profession: elder
+Skills: Speechcraft=25, Intellectual=20
+Traits: Erudite
+Perks: Vigorous, NightOwl
+Background tags: noble_blood, scholarly
+Inventory(1): book_of_history
+Activity: type=idle, desc=contemplating the meaning of life, target=none, progress=0.00
+Environment: room=Great Hall, time=evening, weather=clear, threats=
+Relationships: 1 known
+Recent social interactions: Had a pleasant chat with Oswald | Argued with Leofric about crop rotation
+Recent religious thoughts: Felt absolute clarity while praying at the Oak Shrine | Doubted the teachings of the old gods after the blight
+
+
+What action should I take? Respond with JSON.
+
+===============================
+
+== Raw HTTP Response ==
+status: 200 (OK)
+body:
+
+         
+
+         
+{"id":"gen-1771905067-qjPldL8XfjkB0jQ4MMgu","provider":"Google AI Studio","model":"google/gemini-2.0-flash-001","object":"chat.completion","created":1771905067,"choices":[{"logprobs":null,"finish_reason":"stop","native_finish_reason":"STOP","index":0,"message":{"role":"assistant","content":"```json\n{\n  \"action\": \"socialize\",\n  \"parameters\": {\n    \"target\": \"Oswald\"\n  },\n  \"reasoning\": \"Ealdred's recreation need is relatively low (60), and he recently had a pleasant interaction with Oswald. Socializing will help improve his mood and strengthen their relationship. Since his other needs are high, socializing seems like a good use of his time.\"\n}\n```","refusal":null,"reasoning":null,"annotations":[]}}],"usage":{"prompt_tokens":614,"completion_tokens":95,"total_tokens":709,"cost":0.0000994,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0,"cache_write_tokens":0,"audio_tokens":0,"video_tokens":0},"cost_details":{"upstream_inference_cost":0.0000994,"upstream_inference_prompt_cost":0.0000614,"upstream_inference_completions_cost":0.000038},"completion_tokens_details":{"reasoning_tokens":0,"image_tokens":0}}}
+
+== Diagnostics ==
+normalized_class: other
+latency_ms: 1286
+success: True

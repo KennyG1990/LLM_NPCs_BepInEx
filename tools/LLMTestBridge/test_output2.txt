@@ -1,0 +1,94 @@
+== Preflight ==
+model: openai/gpt-oss-120b:free
+primary_model_only: true
+models_endpoint: https://openrouter.ai/api/v1/models
+preflight_ms: 334
+mod_config_path: <none>
+preflight_result: valid
+
+== Context Validation ==
+issues_count: 0
+
+== Request Metadata ==
+endpoint: https://openrouter.ai/api/v1/chat/completions
+mode: decision
+model: openai/gpt-oss-120b:free
+data_collection: allow
+authorization: Bearer sk-or-...ba91
+messages_count: 2
+payload_chars: 1903
+=== GENERATED SYSTEM PROMPT ===
+=== Elias's Current State ===
+Identity: Elias (Id=npc-stale-01)
+Demographics: age=28, gender=male, background=Tailor, pseudonym=Eli
+Health: 100/100, mood=content (65/100)
+Needs: food=80, water=75, rest=90, recreation=60, comfort=50, beauty=40, privacy=80
+Vitals: pain=0.0, bleeding=0.0
+Profession: Tailor
+Skills: Tailoring=15, Mining=2
+Traits: hardworking
+Activity: type=mining, desc=mining limestone, target=limestone_vein, progress=45.00
+Environment: room=outside, time=14:30, weather=clear, threats=
+
+
+What action should I take? Respond with JSON.
+
+===============================
+
+== Raw HTTP Response ==
+status: 200 (OK)
+body:
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+{"id":"gen-1771909397-tvE89AtRbDq40YtGsB5q","provider":"OpenInference","model":"openai/gpt-oss-120b:free","object":"chat.completion","created":1771909397,"choices":[{"logprobs":null,"finish_reason":"stop","native_finish_reason":"stop","index":0,"message":{"role":"assistant","content":"{\n  \"action\": \"continue_job\",\n  \"parameters\": {},\n  \"reasoning\": \"Elias's basic needs are all above critical levels and there are no threats. He is already making progress on mining limestone (45%). Continuing the current task will complete the resource collection efficiently before switching back to his tailoring profession.\"\n}","refusal":null,"reasoning":"We need to decide action. Elias is a tailor but currently mining limestone (maybe assigned to mining). Needs: food 80, water 75, rest 90, recreation 60, comfort 50, beauty 40, privacy 80. All above 30, so no urgent need. No threats. Mood content. He is hardworking. He is currently mining limestone, progress 45%. Should continue job? However his profession is tailor, mining is not his main skill. Might be better to switch to tailoring to use skill. But maybe mining is needed for building. Since no urgent needs, we could continue mining to finish the vein, then later switch. Also recreation is 60, comfort 50, beauty 40 maybe could socialize or rest later. But priority is work. So continue_job.\n\nReturn JSON with action continue_job, no parameters, reasoning.\n\n","reasoning_details":[{"format":"unknown","index":0,"type":"reasoning.text","text":"We need to decide action. Elias is a tailor but currently mining limestone (maybe assigned to mining). Needs: food 80, water 75, rest 90, recreation 60, comfort 50, beauty 40, privacy 80. All above 30, so no urgent need. No threats. Mood content. He is hardworking. He is currently mining limestone, progress 45%. Should continue job? However his profession is tailor, mining is not his main skill. Might be better to switch to tailoring to use skill. But maybe mining is needed for building. Since no urgent needs, we could continue mining to finish the vein, then later switch. Also recreation is 60, comfort 50, beauty 40 maybe could socialize or rest later. But priority is work. So continue_job.\n\nReturn JSON with action continue_job, no parameters, reasoning.\n\n"}]}}],"usage":{"prompt_tokens":496,"completion_tokens":251,"total_tokens":747,"cost":0,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"cost_details":{"upstream_inference_cost":0,"upstream_inference_prompt_cost":0,"upstream_inference_completions_cost":0},"completion_tokens_details":{"reasoning_tokens":195,"audio_tokens":0}}}
+
+== Diagnostics ==
+normalized_class: policy-mismatch
+latency_ms: 10405
+success: True

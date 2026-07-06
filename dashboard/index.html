@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Going Medieval LLM NPCs — Memory & Decision Dashboard</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Top Header Banner -->
+  <header class="topbar">
+    <div class="header-left">
+      <h1>Going Medieval</h1>
+      <div class="subtitle">LLM NPCs Memory & Decision Dashboard</div>
+    </div>
+    
+    <div class="header-status">
+      <div class="status-indicator">
+        <span class="status-label">Database:</span>
+        <span id="db-state" class="status-badge bad">checking...</span>
+        <span id="db-path" class="status-detail"></span>
+      </div>
+      <div class="status-indicator">
+        <span class="status-label">Player2 Daemon:</span>
+        <span id="p2-state" class="status-badge bad">checking...</span>
+        <span id="p2-detail" class="status-detail"></span>
+      </div>
+      <button id="refresh-btn" type="button" class="btn btn-primary">Refresh Data</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Save Game Selection Strip -->
+    <section class="save-selector-panel">
+      <h2>Active Save Games</h2>
+      <div class="saves-container">
+        <div id="saves-strip" class="saves-strip">
+          <!-- Dynamically populated -->
+        </div>
+        <button id="seed-demo-btn" type="button" class="btn btn-secondary">Seed Demo Save</button>
+      </div>
+    </section>
+
+    <!-- Main View Grid -->
+    <div class="dashboard-grid">
+      
+      <!-- Left Column: Settlers / NPCs List -->
+      <section class="panel settlers-panel">
+        <div class="panel-header">
+          <h3>Settlers in Save</h3>
+          <span id="settler-count" class="badge">0</span>
+        </div>
+        <div class="panel-body list-container">
+          <table class="settler-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Profession</th>
+                <th>Strategic Pressures</th>
+                <th>Player2 Binding</th>
+              </tr>
+            </thead>
+            <tbody id="settlers-body">
+              <tr>
+                <td colspan="4" class="dim">Please select or seed a save game.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Right Column: Detail Tabs Panel -->
+      <section class="panel details-panel">
+        <div class="panel-tabs">
+          <button type="button" class="tab-btn active" data-tab="memories-tab">Memories & Life Events</button>
+          <button type="button" class="tab-btn" data-tab="dialogue-tab">Dialogue State</button>
+          <button type="button" class="tab-btn" data-tab="character-sheet-tab">Character Sheet</button>
+          <button type="button" class="tab-btn" data-tab="relationships-tab">Relationships</button>
+          <button type="button" class="tab-btn" data-tab="simulator-tab">Decision Simulator</button>
+          <button type="button" class="tab-btn" data-tab="incidents-tab">Incidents History</button>
+          <button type="button" class="tab-btn" data-tab="game-control-tab">Game Control Bridge</button>
+        </div>
+
+        <div class="panel-body tab-content-container">
+          
+          <!-- Tab 1: Memories -->
+          <div id="memories-tab" class="tab-content active">
+            <h4 id="npc-detail-title">Select a settler to view memories</h4>
+            
+            <div id="npc-summary-section" class="npc-meta-summary">
+              <!-- Dynamically populated -->
+            </div>
+
+            <div id="npc-personal-file" class="personal-file-card">
+              <div class="dim">No personal file loaded.</div>
+            </div>
+
+            <div id="memory-category-strip" class="memory-category-strip">
+              <!-- Dynamically populated -->
+            </div>
+
+            <div class="memories-lists-grid">
+              <div class="memories-sub-col">
+                <h5>Typed Personal Memory Ledger</h5>
+                <div id="typed-memories-list" class="timeline-list">
+                  <div class="dim">No typed memories.</div>
+                </div>
+              </div>
+              <div class="memories-sub-col">
+                <h5>Permanent Life Events (Importance &ge; 9)</h5>
+                <div id="permanent-memories-list" class="timeline-list">
+                  <div class="dim">No permanent memories.</div>
+                </div>
+              </div>
+              <div class="memories-sub-col">
+                <h5>Recent Memories (L0 event log)</h5>
+                <div id="recent-memories-list" class="timeline-list">
+                  <div class="dim">No recent memories.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 2: Dialogue State -->
+          <div id="dialogue-tab" class="tab-content">
+            <h4 id="dialogue-title">Select a settler to view dialogue state</h4>
+            <div id="dialogue-body" class="dialogue-state-grid">
+              <div class="dim">No dialogue state loaded.</div>
+            </div>
+          </div>
+
+          <!-- Tab 2: Character Sheet -->
+          <div id="character-sheet-tab" class="tab-content">
+            <h4 id="character-sheet-title">Select a settler to view character sheet</h4>
+            <div id="character-sheet-body" class="character-sheet-grid">
+              <div class="dim">No character sheet loaded.</div>
+            </div>
+          </div>
+
+          <!-- Tab 3: Relationships -->
+          <div id="relationships-tab" class="tab-content">
+            <h4>Settler Standing & Relationships</h4>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Standing</th>
+                    <th>Trust</th>
+                    <th>Fear</th>
+                    <th>Resentment</th>
+                  </tr>
+                </thead>
+                <tbody id="relationships-body">
+                  <tr>
+                    <td colspan="6" class="dim">No relationships recorded for this save game.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 4: Decision Simulator -->
+          <div id="simulator-tab" class="tab-content">
+            <h4>Deterministic & Bounded LLM Simulator</h4>
+            <p class="section-desc">Mock a settler's current needs and trigger a simulated Stage 1/2/3 decision cycle. Writes simulation results to database.</p>
+            
+            <div class="simulator-wrapper">
+              <!-- Sim Form -->
+              <form id="sim-form" class="sim-form">
+                <input type="hidden" id="sim-settler-id" name="settler_id" value="settler_1">
+                
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Target Settler</label>
+                    <input type="text" id="sim-name" name="name" value="Arthur Pendelton" required>
+                  </div>
+                  <div class="form-group">
+                    <label>Profession / Background</label>
+                    <input type="text" id="sim-background" name="background" value="Farmer" required>
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Traits (Comma-separated)</label>
+                    <input type="text" id="sim-traits" name="traits" value="hardworking, friendly" required>
+                  </div>
+                </div>
+
+                <hr class="form-divider">
+
+                <div class="form-grid-3">
+                  <div class="form-group">
+                    <label>Food Level (<span id="val-food">50</span>%)</label>
+                    <input type="range" id="sim-food" name="food" min="0" max="100" value="50">
+                    <div class="range-labels"><span>Starving</span><span>Full</span></div>
+                  </div>
+                  <div class="form-group">
+                    <label>Rest Level (<span id="val-rest">50</span>%)</label>
+                    <input type="range" id="sim-rest" name="rest" min="0" max="100" value="50">
+                    <div class="range-labels"><span>Exhausted</span><span>Fresh</span></div>
+                  </div>
+                  <div class="form-group">
+                    <label>Mood Score (<span id="val-mood">50</span>%)</label>
+                    <input type="range" id="sim-mood" name="mood_score" min="0" max="100" value="50">
+                    <div class="range-labels"><span>Miserable</span><span>Happy</span></div>
+                  </div>
+                </div>
+
+                <div class="form-grid-3">
+                  <div class="form-group">
+                    <label>Health Status</label>
+                    <div class="form-row-health">
+                      <input type="number" id="sim-health-curr" name="health_current" value="100" min="0" max="100" style="width: 70px;">
+                      <span>/</span>
+                      <input type="number" id="sim-health-max" name="health_max" value="100" min="1" max="100" style="width: 70px;">
+                    </div>
+                    <label class="checkbox-label" style="margin-top: 8px;">
+                      <input type="checkbox" id="sim-injured" name="is_injured"> Is Injured (Pain)
+                    </label>
+                  </div>
+                  
+                  <div class="form-group">
+                    <label>Environment Threats</label>
+                    <input type="number" id="sim-threats" name="nearby_threats" value="0" min="0" max="10">
+                    <div class="range-labels"><span>Nearby Hostiles Count</span></div>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Weather Condition</label>
+                    <select id="sim-weather" name="weather">
+                      <option value="clear">Clear / Sunny</option>
+                      <option value="rain">Rain / Storm</option>
+                      <option value="snow">Blizzard</option>
+                      <option value="heatwave">Heatwave</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-row" style="margin-top: 16px;">
+                  <button type="submit" id="run-sim-btn" class="btn btn-primary btn-block">Run Influence Engine Simulation</button>
+                </div>
+              </form>
+
+              <!-- Sim Results -->
+              <div class="sim-results" id="sim-results-box">
+                <div class="empty-results">
+                  Configure the settler needs and click "Run" to view decision logs.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 5: Incidents Log -->
+          <div id="incidents-tab" class="tab-content">
+            <h4>Colony Incidents & Actions Log</h4>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Settler</th>
+                    <th>Action</th>
+                    <th>Reasoning / Thoughts</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="incidents-body">
+                  <tr>
+                    <td colspan="5" class="dim">No incidents recorded for this save game.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab 5: Game Control Bridge -->
+          <div id="game-control-tab" class="tab-content">
+            <h4>Remote Game Control & Viewer</h4>
+            <p class="section-desc">Live capture feed from the "Going Medieval" window. Click on the game screen below to inject mouse clicks directly into the running game process.</p>
+            
+            <div class="game-control-wrapper">
+              <div class="game-control-toolbar">
+                <button type="button" id="game-refresh-btn" class="btn btn-secondary">Refresh Frame</button>
+                <button type="button" id="game-stream-btn" class="btn btn-secondary">Start Stream (3 FPS)</button>
+                <button type="button" id="game-focus-btn" class="btn btn-primary">Focus Game Window</button>
+                <div class="control-status">
+                  Status: <span id="game-bridge-status" class="status-val text-yellow">Disconnected</span>
+                </div>
+              </div>
+              
+              <!-- Game screen viewer -->
+              <div class="game-viewer-container">
+                <div id="game-loading-overlay" class="game-overlay">
+                  <div class="spinner"></div>
+                  <span>Waiting for game capture...</span>
+                </div>
+                <img id="game-screen-img" src="" alt="Going Medieval Live Stream" draggable="false" style="display: none;">
+                <!-- Click pointer feedback indicator -->
+                <div id="game-click-indicator" class="click-dot" style="display: none;"></div>
+              </div>
+              
+              <div class="game-keyboard-toolbar">
+                <div class="form-group-inline">
+                  <label for="game-text-input">Type Text:</label>
+                  <input type="text" id="game-text-input" placeholder="Type text to inject and press Enter...">
+                  <button type="button" id="game-send-text-btn" class="btn btn-primary">Inject Text</button>
+                </div>
+                <div class="special-keys">
+                  <span>Special Keys:</span>
+                  <button type="button" class="btn-key" data-key="escape">ESC</button>
+                  <button type="button" class="btn-key" data-key="enter">ENTER</button>
+                  <button type="button" class="btn-key" data-key="space">SPACE</button>
+                  <button type="button" class="btn-key" data-key="t">T (Talk)</button>
+                  <button type="button" class="btn-key" data-key="i">I (Inventory)</button>
+                  <button type="button" class="btn-key" data-key="m">M (Map)</button>
+                  <button type="button" class="btn-key" data-key="c">C (Character)</button>
+                  <button type="button" class="btn-key" data-key="w">W</button>
+                  <button type="button" class="btn-key" data-key="a">A</button>
+                  <button type="button" class="btn-key" data-key="s">S</button>
+                  <button type="button" class="btn-key" data-key="d">D</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

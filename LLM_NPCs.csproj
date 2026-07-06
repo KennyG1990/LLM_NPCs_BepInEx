@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net472</TargetFramework>
+        <OutputType>Library</OutputType>
+        <AssemblyName>LLM_NPCs</AssemblyName>
+        <RootNamespace>GoingMedieval.LLM_NPCs</RootNamespace>
+        <LangVersion>latest</LangVersion>
+    </PropertyGroup>
+
+    <!-- BepInEx Dependencies -->
+    <ItemGroup>
+        <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
+        <PackageReference Include="BepInEx.Core" Version="5.*" />
+        <PackageReference Include="UnityEngine.Modules" Version="2019.4.40" IncludeAssets="compile" />
+    </ItemGroup>
+
+    <!-- Going Medieval Game References (to be copied from game folder) -->
+    <ItemGroup>
+        <Reference Include="Assembly-CSharp" Condition="Exists('$(MSBuildThisFileDirectory)lib\Assembly-CSharp.dll')">
+            <HintPath>$(MSBuildThisFileDirectory)lib\Assembly-CSharp.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="Assembly-CSharp-firstpass" Condition="Exists('$(MSBuildThisFileDirectory)lib\Assembly-CSharp-firstpass.dll')">
+            <HintPath>$(MSBuildThisFileDirectory)lib\Assembly-CSharp-firstpass.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="UnityEngine" Condition="Exists('$(MSBuildThisFileDirectory)lib\UnityEngine.dll')">
+            <HintPath>$(MSBuildThisFileDirectory)lib\UnityEngine.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="UnityEngine.CoreModule" Condition="Exists('$(MSBuildThisFileDirectory)lib\UnityEngine.CoreModule.dll')">
+            <HintPath>$(MSBuildThisFileDirectory)lib\UnityEngine.CoreModule.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="UnityEngine.UI" Condition="Exists('$(MSBuildThisFileDirectory)lib\UnityEngine.UI.dll')">
+            <HintPath>$(MSBuildThisFileDirectory)lib\UnityEngine.UI.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+    </ItemGroup>
+
+    <!-- Newtonsoft for JSON -->
+    <ItemGroup>
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    </ItemGroup>
+
+
+
+    <!-- Framework References -->
+    <ItemGroup>
+        <Reference Include="System.Net.Http" />
+    </ItemGroup>
+
+    <!-- Prevent tool sources (net8 bridge) from being compiled into net472 game plugin -->
+    <ItemGroup>
+        <Compile Remove="tools\**\*.cs" />
+        <None Include="tools\**\*" />
+    </ItemGroup>
+
+    <!-- UI art assets removed — using procedural IMGUI while new UI kit is being built -->
+</Project>

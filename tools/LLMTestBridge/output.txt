@@ -1,0 +1,29 @@
+== Preflight ==
+model: google/gemini-2.5-flash
+primary_model_only: true
+models_endpoint: https://openrouter.ai/api/v1/models
+preflight_ms: 362
+mod_config_path: <none>
+preflight_result: valid
+
+== Context Validation ==
+issues_count: 0
+
+== Request Metadata ==
+endpoint: https://openrouter.ai/api/v1/chat/completions
+mode: decision
+model: google/gemini-2.5-flash
+data_collection: allow
+authorization: Bearer ***
+messages_count: 2
+payload_chars: 2083
+
+== Raw HTTP Response ==
+status: 401 (Unauthorized)
+body:
+{"error":{"message":"Missing Authentication header","code":401}}
+
+== Diagnostics ==
+normalized_class: other
+latency_ms: 22
+success: False

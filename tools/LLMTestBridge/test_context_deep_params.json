@@ -1,0 +1,81 @@
+{
+    "id": "deep_stats_tester",
+    "name": "Ealdred the Wise",
+    "age": 42,
+    "gender": "male",
+    "background_or_role": "village elder",
+    "mood": "content",
+    "mood_score": 75,
+    "health": {
+        "current": 100,
+        "max": 100,
+        "status_effects": [
+            "well_rested"
+        ]
+    },
+    "needs": {
+        "food": 80,
+        "water": 85,
+        "rest": 90,
+        "recreation": 60,
+        "comfort": 50,
+        "beauty": 40,
+        "privacy": 30
+    },
+    "vitals": {
+        "pain": "0.0",
+        "bleeding": "0.0",
+        "MovementSpeed": "5.2",
+        "HungerTolerance": "2.0"
+    },
+    "states": [
+        "isDrafted"
+    ],
+    "profession": "elder",
+    "skills": {
+        "Speechcraft": 25,
+        "Intellectual": 20
+    },
+    "traits": [
+        "Erudite"
+    ],
+    "perks": [
+        "Vigorous",
+        "NightOwl"
+    ],
+    "background_tags": [
+        "noble_blood",
+        "scholarly"
+    ],
+    "inventory": [
+        "book_of_history"
+    ],
+    "current_activity": {
+        "type": "idle",
+        "description": "contemplating the meaning of life"
+    },
+    "relationships": {
+        "oswald_123": {
+            "npc_id": "oswald_123",
+            "opinion": 80,
+            "type": "friend",
+            "trust": 0.9
+        }
+    },
+    "reputation": {
+        "local_faction": 50.5
+    },
+    "social_logs": [
+        "Had a pleasant chat with Oswald",
+        "Argued with Leofric about crop rotation"
+    ],
+    "belief_logs": [
+        "Felt absolute clarity while praying at the Oak Shrine",
+        "Doubted the teachings of the old gods after the blight"
+    ],
+    "environment": {
+        "room": "Great Hall",
+        "time_of_day": "evening",
+        "weather": "clear"
+    }
+}
