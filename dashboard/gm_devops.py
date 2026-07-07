@@ -517,6 +517,19 @@ def dispatch(http, ctx, method, path, query=None, payload=None):
                 return True
             finally:
                 conn.close()
+        if method == "GET" and path == "/api/dev/sheets_debug":
+            conn = ctx.get_db_connection()
+            try:
+                rows = conn.execute(
+                    "SELECT save_id, settler_id, name, age, height, weight, updated_at "
+                    "FROM character_sheets ORDER BY updated_at DESC LIMIT 12").fetchall()
+                total = conn.execute("SELECT COUNT(*) AS c FROM character_sheets").fetchone()["c"]
+                skill_total = conn.execute("SELECT COUNT(*) AS c FROM character_sheet_skills").fetchone()["c"]
+                http._send_json(200, {"ok": True, "total_sheets": total, "total_skill_rows": skill_total,
+                                      "recent": [dict(r) for r in rows]})
+                return True
+            finally:
+                conn.close()
         if method == "GET" and path == "/api/dev/decisions":
             import re as _re
             mod_log_dir = Path(os.path.expandvars(

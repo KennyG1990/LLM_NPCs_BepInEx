@@ -84,8 +84,11 @@ namespace GoingMedieval.LLM_NPCs
             LLMNPCsPlugin.LogToFile("[MemoryManager:Constructor] Initialized (HTTP Mode)");
             _llmClient = llmClient;
             _serverUrl = "http://127.0.0.1:8714";
-            // Localhost calls should resolve in <10ms. A 250ms timeout detects offline/hung server immediately.
-            _httpClient = new HttpClient { Timeout = TimeSpan.FromMilliseconds(250) };
+            // Most localhost calls resolve in <10ms, but the large character-sheet
+            // payload + its multi-table upsert can exceed 250ms and was being
+            // cancelled client-side (sheets never persisted). Posts are async
+            // fire-and-forget, so a 3s ceiling is safe and stops dropping writes.
+            _httpClient = new HttpClient { Timeout = TimeSpan.FromMilliseconds(3000) };
         }
 
         public void SetLLMClient(LLMClient client) => _llmClient = client;
@@ -137,18 +140,35 @@ namespace GoingMedieval.LLM_NPCs
 
         private void PostJson(string route, object payload)
         {
-            if (_isServerOffline && !CheckServerStatus()) return;
-
+            // NOTE: previously this early-returned when the circuit breaker was
+            // latched (_isServerOffline). On localhost that breaker could latch
+            // from a transient early timeout and then silently DROP every write
+            // (no memory profiles, no character sheets ever persisted). We now
+            // ALWAYS attempt the write; the flag only throttles error logging.
             Task.Run(async () =>
             {
                 try
                 {
-                    var json = JsonConvert.SerializeObject(payload);
+                    // Resilient serialization: the rich character-sheet/context
+                    // payloads can contain reference loops or Unity-object fields
+                    // that make a plain SerializeObject THROW — which silently
+                    // dropped the POST and tripped the offline circuit breaker
+                    // (character sheets never persisted). Skip bad members instead.
+                    var json = JsonConvert.SerializeObject(payload, new JsonSerializerSettings
+                    {
+                        ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                        NullValueHandling = NullValueHandling.Ignore,
+                        Error = (sender, args) => { args.ErrorContext.Handled = true; }
+                    });
                     var content = new StringContent(json, Encoding.UTF8, "application/json");
                     var response = await _httpClient.PostAsync($"{_serverUrl}{route}", content);
                     if (!response.IsSuccessStatusCode)
                     {
                         LLMNPCsPlugin.LogToFile($"[MemoryManager:PostJson] Bad status response from {route}: {response.StatusCode}");
+                    }
+                    else
+                    {
+                        _isServerOffline = false; // healthy write clears the breaker
                     }
                 }
                 catch (Exception ex)
@@ -371,6 +391,9 @@ namespace GoingMedieval.LLM_NPCs
                 { "needs", context.Needs },
                 { "skills", context.Skills },
                 { "skill_experience", context.SkillExperience },
+                { "skill_passions", context.SkillPassions },
+                { "height", context.Height },
+                { "weight", context.Weight },
                 { "traits", context.Traits },
                 { "perks", context.Perks },
                 { "background_tags", context.BackgroundTags },

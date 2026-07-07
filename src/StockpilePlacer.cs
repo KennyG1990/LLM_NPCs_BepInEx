@@ -51,6 +51,104 @@ namespace GoingMedieval.LLM_NPCs
             return null;
         }
 
+        private static Type _repoBaseType;
+
+        /// <summary>
+        /// Get a Stockpile blueprint (model) from the game's own model
+        /// repository, exactly how the game does it
+        /// (Repository&lt;StockpileRepository, Stockpile&gt;.Instance). Works on a
+        /// FRESH colony with no placed stockpile. Returns null on failure.
+        /// </summary>
+        internal static string LastBlueprintDiag = "";
+
+        private static object GetStockpileBlueprint()
+        {
+            try
+            {
+                // Enumerate ALL loaded types whose name contains "Stockpile" +
+                // "Repository" so we don't depend on an exact short name.
+                Type stockRepo = FindTypeByName("StockpileRepository");
+                if (stockRepo == null)
+                {
+                    var names = new System.Text.StringBuilder();
+                    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        Type[] ts; try { ts = asm.GetTypes(); } catch { continue; }
+                        foreach (var tt in ts)
+                            if (tt.Name.IndexOf("Stockpile", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                tt.Name.IndexOf("Repository", StringComparison.OrdinalIgnoreCase) >= 0)
+                            { stockRepo = tt; names.Append(tt.FullName + ","); break; }
+                        if (stockRepo != null) break;
+                    }
+                    LastBlueprintDiag = "repoScan=" + names + "found=" + (stockRepo != null);
+                }
+                if (stockRepo == null)
+                {
+                    LastBlueprintDiag = "StockpileRepository type NOT FOUND";
+                    return null;
+                }
+                // Instance is a static prop on the generic base; walk up to find it.
+                object instance = null;
+                var t = stockRepo;
+                while (t != null && instance == null)
+                {
+                    var p = t.GetProperty("Instance",
+                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly);
+                    if (p != null) { try { instance = p.GetValue(null, null); } catch { } }
+                    t = t.BaseType;
+                }
+                if (instance == null)
+                {
+                    LastBlueprintDiag = "repo=" + stockRepo.FullName + " Instance=NULL";
+                    return null;
+                }
+                var itype = instance.GetType();
+                // GetFirst(): TM (defined on the generic base). Walk with
+                // DeclaredOnly to avoid "Ambiguous match" in the CRTP hierarchy.
+                MethodInfo getFirst = null;
+                for (var mt = itype; mt != null && getFirst == null; mt = mt.BaseType)
+                    foreach (var m in mt.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                        if (m.Name == "GetFirst" && m.GetParameters().Length == 0) { getFirst = m; break; }
+                object bp = null;
+                try { bp = getFirst?.Invoke(instance, null); }
+                catch (Exception ge) { LastBlueprintDiag = "GetFirst invoke exc: " + (ge.InnerException?.Message ?? ge.Message); }
+                if (bp != null) { LastBlueprintDiag = "ok via GetFirst"; return bp; }
+                // Fallback: pull first value out of the protected 'dictionary'/'repository'.
+                for (var ft = itype; ft != null; ft = ft.BaseType)
+                    foreach (var f in ft.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                    {
+                        object val; try { val = f.GetValue(instance); } catch { continue; }
+                        if (val is System.Collections.IDictionary d)
+                            foreach (var v in d.Values) { if (v != null) { LastBlueprintDiag = "ok via " + f.Name + " dict"; return v; } }
+                        if (val is System.Collections.IList lst && lst.Count > 0)
+                            foreach (var v in lst) { if (v != null) { LastBlueprintDiag = "ok via " + f.Name + " list"; return v; } }
+                    }
+                LastBlueprintDiag = $"repo={itype.Name} GetFirst=null(found={getFirst != null}) no-collection-yielded-model";
+                return null;
+            }
+            catch (Exception ex)
+            {
+                LastBlueprintDiag = "EXC: " + (ex.InnerException?.Message ?? ex.Message);
+                return null;
+            }
+        }
+
+        private static int _mbh = 0;
+        private static int GetMapBlockHeight()
+        {
+            if (_mbh > 0) return _mbh;
+            try
+            {
+                var wt = FindType("NSMedieval.Map.World") ?? FindTypeByName("World");
+                var f = wt?.GetField("MapBlockHeight",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                if (f != null) _mbh = Convert.ToInt32(f.GetValue(null));
+            }
+            catch { }
+            if (_mbh <= 0) _mbh = 3; // decompiled default: World.MapBlockHeight = 3
+            return _mbh;
+        }
+
         private static object ManagerInstance()
         {
             _managerType = _managerType ?? FindType("NSMedieval.Stockpiles.StockpileManager");
@@ -99,20 +197,25 @@ namespace GoingMedieval.LLM_NPCs
                 if (manager == null)
                     return "StockpileManager not found (is a save loaded?)";
 
-                // Blueprint: reuse the model from an existing stockpile.
-                object blueprint = null;
-                var stockpilesProp = manager.GetType().GetProperty("Stockpiles");
-                var existing = stockpilesProp?.GetValue(manager, null) as IEnumerable;
-                if (existing != null)
+                // Blueprint from the game's MODEL REPOSITORY — how the game
+                // itself does it (StockpileInstance.Blueprint => Repository<
+                // StockpileRepository, Stockpile>.Instance.GetByID(...)). This
+                // works on a FRESH colony with no existing stockpile. Fallback:
+                // copy an existing zone's blueprint if the repo lookup fails.
+                object blueprint = GetStockpileBlueprint();
+                if (blueprint == null)
                 {
-                    foreach (var instance in existing)
-                    {
-                        blueprint = instance?.GetType().GetProperty("Blueprint")?.GetValue(instance, null);
-                        if (blueprint != null) break;
-                    }
+                    var stockpilesProp = manager.GetType().GetProperty("Stockpiles");
+                    var existing = stockpilesProp?.GetValue(manager, null) as IEnumerable;
+                    if (existing != null)
+                        foreach (var instance in existing)
+                        {
+                            blueprint = instance?.GetType().GetProperty("Blueprint")?.GetValue(instance, null);
+                            if (blueprint != null) break;
+                        }
                 }
                 if (blueprint == null)
-                    return "no existing stockpile to source a blueprint from (repository lookup not yet implemented)";
+                    return "no stockpile blueprint :: " + LastBlueprintDiag;
 
                 var canPlace = manager.GetType().GetMethod("CanPlaceStockpile");
                 var spawn = manager.GetType().GetMethod("SpawnStockpile");
@@ -140,10 +243,27 @@ namespace GoingMedieval.LLM_NPCs
                 int ay = ReadIntField(anchorPos, "y", "Y");
                 int az = ReadIntField(anchorPos, "z", "Z");
 
-                // Scan rings around the settler's node cell; place at the first
-                // cell the game itself validates (strict CanPlaceStockpile, the
-                // same variant SpawnStockpile uses internally via GetMeshArea).
-                for (int radius = 0; radius <= 12; radius++)
+                // SITE SELECTION (utility-scored, per the RTS reference docs):
+                // score every candidate anchor by how many cells of the size x size
+                // rectangle the game validates, and place at the MOST-OPEN cell.
+                // This prefers open ground and avoids cramped spots (e.g. the
+                // settler's own bedroom, where only 1 of 4 cells is free).
+                bool CellOk(int x, int z)
+                {
+                    var c = MakeVec3Int(x, ay, z);
+                    try { return c != null && (bool)canPlace.Invoke(manager, new[] { c, (object)false }); }
+                    catch { return false; }
+                }
+                int RectScore(int x, int z)
+                {
+                    int s = 0;
+                    for (int ix = 0; ix < size; ix++)
+                        for (int iz = 0; iz < size; iz++)
+                            if (CellOk(x + ix, z + iz)) s++;
+                    return s;
+                }
+                int bestScore = 0, bx = 0, bz = 0; bool found = false;
+                for (int radius = 0; radius <= 12 && bestScore < size * size; radius++)
                 {
                     for (int dx = -radius; dx <= radius; dx++)
                     {
@@ -154,33 +274,38 @@ namespace GoingMedieval.LLM_NPCs
                                     : new[] { -radius, radius }.AsEnumerable()))
                         {
                             int cx = ax + dx, cz = az + dz;
-                            var cell = MakeVec3Int(cx, ay, cz);
-                            if (cell == null) return "Vec3Int type not resolvable";
-                            bool ok;
-                            try { ok = (bool)canPlace.Invoke(manager, new[] { cell, (object)false }); }
-                            catch { ok = false; }
-                            if (!ok) continue;
-                            var end = MakeVec3Int(cx + size - 1, ay, cz + size - 1);
-                            spawn.Invoke(manager, new[] { blueprint, cell, end });
-                            // Success = the game registered the stockpile in the
-                            // grid. Check EVERY cell of the placed rectangle, not
-                            // just the anchor (the anchor corner can fall outside
-                            // the game-validated mesh).
-                            int registered = 0;
-                            for (int ix = 0; ix < size; ix++)
-                                for (int iz = 0; iz < size; iz++)
-                                {
-                                    var pc = MakeVec3Int(cx + ix, ay, cz + iz);
-                                    try { if ((bool)existsMethod.Invoke(manager, new[] { pc })) registered++; }
-                                    catch { }
-                                }
-                            if (registered > 0)
-                                return $"ok: stockpile placed at ({cx},{ay},{cz}) registeredCells={registered}/{size * size} [node-anchored]";
-                            // Body ran but nothing registered — keep scanning for a
-                            // cell that actually takes, then report if none do.
-                            continue;
+                            if (!CellOk(cx, cz)) continue;      // anchor must itself be legal
+                            int score = RectScore(cx, cz);
+                            if (score > bestScore) { bestScore = score; bx = cx; bz = cz; found = true; }
+                            if (bestScore == size * size) break;
                         }
+                        if (bestScore == size * size) break;
                     }
+                }
+                if (found && bestScore > 0)
+                {
+                    // GROUND TRUTH (MeshAreaMaker.GetMeshArea): SpawnStockpile
+                    // expects start/end.y in WORLD units and divides by
+                    // World.MapBlockHeight(=3) to get the level. node.Position.y
+                    // is the LEVEL, so multiply. CanPlaceStockpile/StockpileExists
+                    // use the LEVEL directly.
+                    int mbh = GetMapBlockHeight();
+                    int wy = ay * mbh;
+                    var start = MakeVec3Int(bx, wy, bz);
+                    var end = MakeVec3Int(bx + size - 1, wy, bz + size - 1);
+                    if (start == null || end == null) return "Vec3Int type not resolvable";
+                    spawn.Invoke(manager, new[] { blueprint, start, end });
+                    int registered = 0;
+                    for (int ix = 0; ix < size; ix++)
+                        for (int iz = 0; iz < size; iz++)
+                        {
+                            var pc = MakeVec3Int(bx + ix, ay, bz + iz);
+                            try { if ((bool)existsMethod.Invoke(manager, new[] { pc })) registered++; }
+                            catch { }
+                        }
+                    if (registered > 0)
+                        return $"ok: stockpile placed level=({bx},{ay},{bz}) worldY={wy} registeredCells={registered}/{size * size} [best-open-ground]";
+                    return $"placed level=({bx},{ay},{bz}) worldY={wy} openScore={bestScore} but 0 registered";
                 }
 
                 // Diagnostics grounded on the real node (only if nothing placed).

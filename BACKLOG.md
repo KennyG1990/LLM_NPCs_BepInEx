@@ -1,3 +1,88 @@
+# Session 2026-07-07 (Cowork, opus) — summary
+
+✅✅ STOCKPILE ACTUALLY BUILDS NOW (game-verified, not a DB flag). Two real
+bugs found by grounding in decompiled game code, both fixed:
+  1. Blueprint sourcing: old code copied an EXISTING zone's blueprint → failed
+     on a fresh colony. Now sources from Repository<StockpileRepository,
+     Stockpile>.Instance.GetFirst() (how the game does it), via DeclaredOnly
+     hierarchy-walk reflection (FlattenHierarchy threw "Ambiguous match" on the
+     CRTP generic base).
+  2. Coordinate convention: MeshAreaMaker.GetMeshArea does y = start.y /
+     World.MapBlockHeight(=3). SpawnStockpile expects start/end.y in WORLD units
+     (level*3); we passed the level directly → wrong layer → empty mesh → no
+     zone. Fixed: pass ay*MapBlockHeight to SpawnStockpile; keep level-y for
+     CanPlaceStockpile/StockpileExists.
+  LIVE PROOF (Libury order #43): "ok: stockpile placed level=(118,6,137)
+  worldY=18 registeredCells=4/4". The game's OWN alerts changed: "Nowhere to
+  store resources" and "Settlers are starving" both CLEARED; settlers began
+  eating. This is the first genuinely-functional structure the mod has placed.
+  Honest note: earlier "proofs" were StockpileExists grid flags, not visible/
+  functional zones — corrected.
+  NEXT: (a) actual BUILDINGS via BuildingsManagerMain/ConstructionController
+  (place blueprint → settlers haul+construct); (b) Strategic Model to trigger
+  builds from colony alerts organically (task 11).
+
+
+
+Shipped + verified this session:
+- ✅ LLM cost: DecisionInterval 10s→180s + migration guard (min 60s). Was
+  ~1400 calls/hr; now ~18x fewer. Event triggers still immediate. (deployed)
+- ✅ Stockpile placement B3 root-caused + FIXED: the bug was world→grid
+  conversion. Ground truth via new /api/dev/decompile (ilspycmd): the real
+  conversion is VillageMap.GetNodeByWorldPos (GridUtils.GetGridPosition);
+  MapNode.Position is canonical. SpawnStockpile is the complete entry point
+  (validates via CanPlaceStockpile → GetMeshArea → Save→AddAreaToTheWorld).
+  StockpilePlacer now anchors on the settler's real node + utility-scores cells
+  for the most-open ground. LIVE: order #15 placed a game-registered stockpile
+  (registeredCells>0). (deployed)
+- ✅ Player2 build_stockpile wired: LLMClient tool + scored/whitelisted decision
+  + DecisionExecutor case + ForceProcessSettler trigger. FINDING: in famine or
+  fresh colonies Player2 rationally picks eat/continue_job, not build — the
+  build decision belongs in the STRATEGIC layer (resource ledger), per the RTS
+  reference docs. That is the correct next architecture (Read Model → Strategic
+  Model → Validator/Actuator).
+- ✅ Character data model FULLY GROUNDED (decompile + live /api/dev/dump_character):
+  HumanoidInstance(NSMedieval.State).Skills=WorkerSkills; SkillsOrdered=
+  List<WorkerSkill>{Id:SkillType, Level, Experience, GetGoalPreferenceLevel()=
+  PASSION}; Perks List; GetCharacterInfo()→CharacterInfoBase{FirstName,LastName,
+  Height,GetWeight(),Age(base)}. Extractor + payload + Python upsert extended
+  for skill passions + height + weight (idempotent column migration). Server
+  upsert VERIFIED via manual POST (height/weight/passions persist correctly).
+
+✅ RESOLVED — the telemetry pipeline. TWO stacked bugs, both fixed + verified:
+  (1) MemoryManager.PostJson early-returned when the _isServerOffline circuit
+  breaker was latched, silently DROPPING every write. Fix: always attempt the
+  write; a healthy write clears the flag (breaker is now log-throttle only).
+  (2) upsert_character_sheet threw IntegrityError on a duplicate
+  character_sheet_mood_modifiers (kind,label) which rolled back the ENTIRE
+  sheet transaction (that's why NO real sheet ever persisted). Fix: INSERT OR
+  REPLACE on mood_modifiers + traits.
+  VERIFIED LIVE (Libury): all 4 settlers now persist full sheets — 15 skills
+  each with level + PASSION (★), plus age/height/weight matching the creation
+  screen exactly (Alan Tirel: age 45, h158, w61). Character sheet captures
+  everything the game tracks. Server-side capture at validation/last_sheet_post.json
+  + /api/dev/sheets_debug pinned the root cause.
+
+  (historical note) The blocker first presented as: the mod's PostJson pipeline
+  was NOT persisting ANY data for the current save (Libury: 0 memory profiles, 0
+  character sheets). Server-side instrument (validation/last_sheet_post.json)
+  proved the character-sheet POST NEVER REACHES the server. So the extraction/
+  storage code is correct but the mod→dashboard HTTP writes are being dropped.
+  Prime suspect: the _isServerOffline circuit breaker (MemoryManager.cs:143)
+  latching (early timeouts on the old 250ms client) and CheckServerStatus not
+  resetting it. Fixes attempted: 250ms→3000ms timeout, resilient JSON
+  serialization (ReferenceLoopHandling/Error-handled) — neither restored writes,
+  which points at the breaker being latched rather than serialize/timeout.
+  NEXT (C# diagnostic build): log at PostJson entry (called? _isServerOffline
+  state?) and at SaveCharacterSheet entry; likely fix = reset _isServerOffline
+  on save load / make CheckServerStatus self-heal reliably, or bypass the
+  breaker for localhost. This unblocks character sheets AND all other mod
+  telemetry.
+  Dev tooling added: /api/dev/decompile, /api/dev/dump_character,
+  /api/dev/place_test (actions: place_stockpile|probe_direct|player2_decide|
+  dump_character), /api/dev/last_order, /api/dev/decisions, /api/dev/sheets_debug,
+  mod-log added to /api/dev/log.
+
 # Active Backlog
 
 Last updated: 2026-07-06 (Cowork session, picked up from Codex)

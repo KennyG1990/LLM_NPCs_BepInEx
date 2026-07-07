@@ -746,6 +746,14 @@ def upsert_character_sheet(conn, save_id, settler_id, sheet):
     if not save_id or not settler_id or not isinstance(sheet, dict):
         return
     now = datetime.utcnow().timestamp()
+    # Idempotent migration for newly-tracked physical/passion stats.
+    for _tbl, _col, _typ in (("character_sheets", "height", "REAL"),
+                             ("character_sheets", "weight", "REAL"),
+                             ("character_sheet_skills", "passion", "INTEGER")):
+        try:
+            conn.execute(f"ALTER TABLE {_tbl} ADD COLUMN {_col} {_typ}")
+        except Exception:
+            pass
     identity = sheet.get("identity") or {}
     health = sheet.get("health") or {}
     needs = sheet.get("needs") or {}
@@ -754,6 +762,9 @@ def upsert_character_sheet(conn, save_id, settler_id, sheet):
     equipment = sheet.get("equipment") or {}
     skills = sheet.get("skills") or {}
     skill_xp = sheet.get("skill_experience") or {}
+    skill_passions = sheet.get("skill_passions") or {}
+    height = sheet.get("height")
+    weight = sheet.get("weight")
     work_priorities = sheet.get("work_priorities") or {}
     inventory = sheet.get("inventory") or []
     traits = sheet.get("traits") or []
@@ -789,8 +800,8 @@ def upsert_character_sheet(conn, save_id, settler_id, sheet):
         INSERT OR REPLACE INTO character_sheets
         (save_id, settler_id, updated_at, name, role, background, pseudonym, age, gender,
          mood, mood_score, health_current, health_max, activity_type, activity_description,
-         schedule_label, room, raw_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         schedule_label, room, height, weight, raw_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         save_id,
         settler_id,
@@ -809,6 +820,8 @@ def upsert_character_sheet(conn, save_id, settler_id, sheet):
         activity_description,
         schedule_label,
         room,
+        numeric_or_default(height),
+        numeric_or_default(weight),
         json_dumps_stable(sheet),
     ))
 
@@ -860,9 +873,11 @@ def upsert_character_sheet(conn, save_id, settler_id, sheet):
     for skill_name, level in skills.items():
         conn.execute("""
             INSERT INTO character_sheet_skills
-            (save_id, settler_id, skill_name, level, experience, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (save_id, settler_id, str(skill_name), int(level or 0), float(skill_xp.get(skill_name, 0) or 0), now))
+            (save_id, settler_id, skill_name, level, experience, passion, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (save_id, settler_id, str(skill_name), int(level or 0),
+              float(skill_xp.get(skill_name, 0) or 0),
+              int(skill_passions.get(skill_name, 0) or 0), now))
 
     conn.execute("DELETE FROM character_sheet_work_priorities WHERE save_id = ? AND settler_id = ?", (save_id, settler_id))
     for job_name, priority in work_priorities.items():
@@ -899,7 +914,7 @@ def upsert_character_sheet(conn, save_id, settler_id, sheet):
     for kind, values in (("trait", traits), ("perk", perks), ("state", states), ("vital", list(vitals.keys()))):
         for value in values:
             conn.execute("""
-                INSERT INTO character_sheet_traits
+                INSERT OR REPLACE INTO character_sheet_traits
                 (save_id, settler_id, kind, value, detail, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (save_id, settler_id, kind, str(value), str(vitals.get(value, "")) if kind == "vital" else "", now))
@@ -912,8 +927,11 @@ def upsert_character_sheet(conn, save_id, settler_id, sheet):
     )
     for kind, values in modifier_groups:
         for label, score in values:
+            # OR REPLACE: a settler can legitimately have two entries with the
+            # same kind+label; without this the UNIQUE constraint threw and rolled
+            # back the ENTIRE character-sheet upsert (no sheets ever persisted).
             conn.execute("""
-                INSERT INTO character_sheet_mood_modifiers
+                INSERT OR REPLACE INTO character_sheet_mood_modifiers
                 (save_id, settler_id, kind, label, value, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (save_id, settler_id, kind, label, score, now))
@@ -2652,15 +2670,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
             save_id = payload.get("save_id")
             settler_id = payload.get("settler_id")
             sheet = payload.get("sheet") or {}
+            _dbg = {"received": True, "when": datetime.utcnow().isoformat(),
+                    "save_id": save_id, "settler_id": settler_id,
+                    "sheet_keys": list(sheet.keys())[:50], "error": None}
             conn = get_db_connection()
             try:
                 with conn:
                     upsert_character_sheet(conn, save_id, settler_id, sheet)
                 self._send_json(200, {"ok": True, "message": "Character sheet saved successfully"})
             except Exception as e:
+                import traceback as _tb
+                _dbg["error"] = f"{type(e).__name__}: {e}"
+                _dbg["trace"] = _tb.format_exc()[-800:]
                 self._send_json(500, {"error": str(e)})
             finally:
                 conn.close()
+                try:
+                    from pathlib import Path as _P
+                    _P(__file__).resolve().parent.parent.joinpath(
+                        "validation", "last_sheet_post.json").write_text(
+                        json.dumps(_dbg), encoding="utf-8")
+                except Exception:
+                    pass
             return
 
         elif path == "/api/dialogue/barter/resolve":

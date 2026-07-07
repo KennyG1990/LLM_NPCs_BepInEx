@@ -49,6 +49,7 @@ namespace GoingMedieval.LLM_NPCs
                     Pseudonym = GetFirstString(source, "pseudonym", "Pseudonym", "nickname", "Nickname", "title", "Title"),
                     Skills = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
                     SkillExperience = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase),
+                    SkillPassions = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
                     Traits = new List<string>(),
                     Perks = new List<string>(),
                     BackgroundTags = new List<string>(),
@@ -263,6 +264,71 @@ namespace GoingMedieval.LLM_NPCs
             }
         }
 
+        /// <summary>
+        /// GROUNDING TOOL: dump the live HumanoidInstance's member names + values
+        /// so we can see the exact accessors for skills/passions/weight/height/
+        /// religious-alignment/job-preferences on the real object (the decompiler
+        /// crashes on this type). Read-only. Returns a compact string.
+        /// </summary>
+        public static string DumpCharacter(GameObject go)
+        {
+            try
+            {
+                if (go == null) return "no gameobject";
+                object hi = null; string sourceType = "?";
+                foreach (var comp in go.GetComponents<Component>())
+                {
+                    if (comp == null) continue;
+                    var prop = comp.GetType().GetProperty("HumanoidInstance");
+                    if (prop != null)
+                    {
+                        var v = prop.GetValue(comp, null);
+                        if (v != null) { hi = v; sourceType = comp.GetType().Name; break; }
+                    }
+                }
+                if (hi == null)
+                    return "no HumanoidInstance on components: " +
+                           string.Join(",", go.GetComponents<Component>().Where(c => c != null).Select(c => c.GetType().Name).ToArray());
+
+                string Short(object v)
+                {
+                    if (v == null) return "null";
+                    try
+                    {
+                        if (v is string s) return "\"" + (s.Length > 40 ? s.Substring(0, 40) : s) + "\"";
+                        if (v is System.Collections.IEnumerable en && !(v is string))
+                        {
+                            int n = 0; foreach (var _ in en) n++;
+                            return v.GetType().Name + "[" + n + "]";
+                        }
+                        var str = v.ToString();
+                        return str.Length > 50 ? str.Substring(0, 50) : str;
+                    }
+                    catch { return "<err>"; }
+                }
+                // Only surface members likely to matter for the character sheet.
+                var rx = new System.Text.RegularExpressions.Regex(
+                    "skill|passion|perk|age|weight|height|religio|gender|name|stat|need|mood|" +
+                    "role|profession|background|trait|body|alignment|preference|expertise|health",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                var sb = new System.Text.StringBuilder();
+                sb.Append("HI type=" + hi.GetType().FullName + " (via " + sourceType + "); ");
+                var t = hi.GetType();
+                foreach (var p in t.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    if (p.GetIndexParameters().Length > 0 || !rx.IsMatch(p.Name)) continue;
+                    try { sb.Append("P:" + p.Name + "=" + Short(p.GetValue(hi, null)) + "; "); } catch { }
+                }
+                foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    if (!rx.IsMatch(f.Name)) continue;
+                    try { sb.Append("F:" + f.Name + "=" + Short(f.GetValue(hi)) + "; "); } catch { }
+                }
+                return sb.ToString();
+            }
+            catch (Exception ex) { return "dump error: " + ex.Message; }
+        }
+
         private static void ExtractSkills(object source, NPCContext context)
         {
             LLMNPCsPlugin.LogToFile("[NPCContextExtractor:ExtractSkills] Starting");
@@ -274,7 +340,16 @@ namespace GoingMedieval.LLM_NPCs
                 if (string.IsNullOrWhiteSpace(context.BackgroundOrRole))
                     context.BackgroundOrRole = context.Profession;
                 
-                var skills = GetPropertyValue<object>(humanoidInstance, "Skills") ?? GetFieldValue<object>(humanoidInstance, "skills");
+                // Ground truth: HumanoidInstance.Skills is a WorkerSkills wrapper;
+                // the iterable list is SkillsOrdered (List<WorkerSkill>) or
+                // WorkerSkills.Skills. Each WorkerSkill exposes Id (SkillType),
+                // Level, Experience, and GetGoalPreferenceLevel() (passion tier).
+                var skills = GetPropertyValue<object>(humanoidInstance, "SkillsOrdered");
+                if (skills == null)
+                {
+                    var wrapper = GetPropertyValue<object>(humanoidInstance, "Skills") ?? GetFieldValue<object>(humanoidInstance, "skills");
+                    skills = GetPropertyValue<object>(wrapper, "Skills") ?? wrapper;
+                }
                 if (skills == null) skills = GetFirstObject(humanoidInstance, "skillTracker", "skillSet");
                 if (skills != null)
                 {
@@ -300,8 +375,37 @@ namespace GoingMedieval.LLM_NPCs
                             context.Skills[skillName] = level;
                             var xp = GetFirstFloat(skill, "Experience", "experience", "Xp", "xp", "Progress", "progress");
                             if (xp > 0f) context.SkillExperience[skillName] = xp;
+                            // Passion/preference tier (the stars): GetGoalPreferenceLevel()
+                            // returns int (0 = none/indifferent, higher = passionate).
+                            try
+                            {
+                                var pm = skill.GetType().GetMethod("GetGoalPreferenceLevel", Type.EmptyTypes);
+                                if (pm != null)
+                                    context.SkillPassions[skillName] = Convert.ToInt32(pm.Invoke(skill, null));
+                            }
+                            catch { }
                         }
                     }
+
+                    // Physical / identity block from GetCharacterInfo() (CharacterInfoBase):
+                    // FirstName, LastName, Height, GetWeight(), Age.
+                    try
+                    {
+                        var ci = humanoidInstance.GetType().GetMethod("GetCharacterInfo", Type.EmptyTypes)?.Invoke(humanoidInstance, null);
+                        if (ci != null)
+                        {
+                            var first = GetFirstString(ci, "FirstName");
+                            var last = GetFirstString(ci, "LastName");
+                            var full = ((first ?? "") + " " + (last ?? "")).Trim();
+                            if (!string.IsNullOrWhiteSpace(full)) context.Name = full;
+                            context.Height = GetFirstFloat(ci, "Height");
+                            var wm = ci.GetType().GetMethod("GetWeight", Type.EmptyTypes);
+                            if (wm != null) { try { context.Weight = Convert.ToSingle(wm.Invoke(ci, null)); } catch { } }
+                            var age = GetFirstInt(ci, "Age", "age");
+                            if (age > 0) context.Age = age;
+                        }
+                    }
+                    catch { }
                 }
 
                 var traits = GetFirstObject(humanoidInstance, "traits", "Traits", "personalityTraits");
@@ -1059,6 +1163,9 @@ namespace GoingMedieval.LLM_NPCs
         [JsonProperty("profession")] public string Profession { get; set; }
         [JsonProperty("skills")] public Dictionary<string, int> Skills { get; set; }
         [JsonProperty("skill_experience")] public Dictionary<string, float> SkillExperience { get; set; }
+        [JsonProperty("skill_passions")] public Dictionary<string, int> SkillPassions { get; set; }
+        [JsonProperty("height")] public float Height { get; set; }
+        [JsonProperty("weight")] public float Weight { get; set; }
         [JsonProperty("traits")] public List<string> Traits { get; set; }
         [JsonProperty("perks")] public List<string> Perks { get; set; }
         [JsonProperty("background_tags")] public List<string> BackgroundTags { get; set; }

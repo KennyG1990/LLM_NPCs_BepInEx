@@ -162,6 +162,9 @@ namespace GoingMedieval.LLM_NPCs
                         LLMNPCsPlugin.ForceProcessSettler(settler);
                         note = "forced a real Player2 decision cycle (settler chooses + acts autonomously)";
                         break;
+                    case "dump_character":
+                        note = NPCContextExtractor.DumpCharacter(settler.gameObject);
+                        break;
                     case "build_special":
                         DecisionExecutor.Execute(settler, MakeDecision("build_special",
                             new Dictionary<string, object> { { "building_name", step.Value<string>("building") ?? "" } },
