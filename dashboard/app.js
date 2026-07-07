@@ -543,7 +543,11 @@ async function fetchDialogueState(settlerId) {
       </section>
       <section class="dialogue-card">
         <h5>Barter / Request Intents</h5>
-        ${renderDialogueList(barter, item => `${item.intent_type}: ${item.item || "unspecified"}`, item => `${item.status} · ${item.terms || "no terms"}`)}
+        ${renderBarterList(barter, settlerId)}
+      </section>
+      <section class="dialogue-card">
+        <h5>Trust Events (why trust moved)</h5>
+        ${renderDialogueList(state.trust_events || [], item => `${item.delta > 0 ? "+" : ""}${Number(item.delta).toFixed(2)} → ${Number(item.trust_after).toFixed(2)}`, item => item.reason || item.source)}
       </section>
       <section class="dialogue-card dialogue-wide">
         <h5>Prompt Context Sent To NPC</h5>
@@ -552,6 +556,43 @@ async function fetchDialogueState(settlerId) {
     `;
   } catch (e) {
     body.innerHTML = `<div class="dim">Error loading dialogue state: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderBarterList(rows, settlerId) {
+  if (!rows || rows.length === 0) return '<div class="dim">No records yet.</div>';
+  return rows.map(row => `
+    <div class="dialogue-list-item">
+      <strong>${esc(`${row.intent_type}: ${row.item || "unspecified"}`)}</strong>
+      <span>${esc(`${row.status} · ${row.terms || "no terms"}`)}</span>
+      ${row.status === "proposed" ? `
+        <span>
+          <button type="button" class="tab-btn" onclick="resolveBarter(${row.id}, '${esc(settlerId)}', 'fulfilled')">Kept</button>
+          <button type="button" class="tab-btn" onclick="resolveBarter(${row.id}, '${esc(settlerId)}', 'broken')">Broken</button>
+          <button type="button" class="tab-btn" onclick="resolveBarter(${row.id}, '${esc(settlerId)}', 'declined')">Declined</button>
+        </span>` : ""}
+    </div>
+  `).join("");
+}
+
+async function resolveBarter(intentId, settlerId, resolution) {
+  if (!activeSaveId) return;
+  try {
+    const res = await fetch("/api/dialogue/barter/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        save_id: activeSaveId, settler_id: settlerId,
+        intent_id: intentId, resolution: resolution,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(`Barter resolve failed: ${data.error || res.status}`);
+    }
+    fetchDialogueState(settlerId);
+  } catch (e) {
+    alert(`Barter resolve error: ${e.message}`);
   }
 }
 
@@ -1069,9 +1110,102 @@ function stopGameStream() {
   isStreaming = false;
   gameStreamBtn.textContent = "Start Stream (3 FPS)";
   gameStreamBtn.className = "btn btn-secondary";
-  
+
   if (streamInterval) {
     clearInterval(streamInterval);
     streamInterval = null;
   }
 }
+
+// ===========================================================================
+// World Systems tab (P3+ backends: orders, entities, events, diplomacy,
+// romance, disease, combat). Living proof for every gm_systems table.
+// ===========================================================================
+
+async function fetchWorldSystems() {
+  const body = document.getElementById("world-body");
+  if (!body) return;
+  if (!activeSaveId) {
+    body.innerHTML = '<div class="dim">Select a save first.</div>';
+    return;
+  }
+  body.innerHTML = '<div class="dim">Loading world systems…</div>';
+  const q = `?save_id=${encodeURIComponent(activeSaveId)}`;
+  try {
+    const [orders, entities, events, diplomacy, romance, disease, combat] = await Promise.all([
+      fetch(`/api/orders${q}`).then(r => r.json()),
+      fetch(`/api/entities${q}`).then(r => r.json()),
+      fetch(`/api/events${q}`).then(r => r.json()),
+      fetch(`/api/diplomacy${q}`).then(r => r.json()),
+      fetch(`/api/romance${q}`).then(r => r.json()),
+      fetch(`/api/disease${q}`).then(r => r.json()),
+      fetch(`/api/combat${q}`).then(r => r.json()),
+    ]);
+
+    body.innerHTML = `
+      <section class="dialogue-card">
+        <h5>AI Orders (${(orders.orders || []).length})</h5>
+        ${renderDialogueList(orders.orders || [],
+          o => `${o.settler_id}: ${o.raw_text}`,
+          o => `${o.status} · step ${o.current_step}/${(o.steps || []).length} · ${(o.steps || []).map(s => s.action).join(" → ")}`)}
+      </section>
+      <section class="dialogue-card">
+        <h5>World Events (${(events.events || []).length})</h5>
+        ${renderDialogueList(events.events || [],
+          e => `[${e.event_type}] ${e.title}`,
+          e => `${e.status} · known by ${e.known_by} · conf ${Number(e.confidence).toFixed(2)}`)}
+      </section>
+      <section class="dialogue-card">
+        <h5>Diplomacy (${(diplomacy.relations || []).length} relations)</h5>
+        ${renderDialogueList(diplomacy.relations || [],
+          r => `${r.faction_a} ↔ ${r.faction_b}`,
+          r => `${r.state} · relation ${Number(r.relation).toFixed(2)} · fatigue ${Number(r.war_fatigue).toFixed(1)}${r.trade_pact ? " · trade pact" : ""}`)}
+        <h5>Proclamations</h5>
+        ${renderDialogueList((diplomacy.log || []).filter(l => l.proclamation).slice(0, 6),
+          l => l.proclamation,
+          l => `${l.actor} → ${l.target || "all"} · round ${l.round_no}`)}
+      </section>
+      <section class="dialogue-card">
+        <h5>Known Entities (${(entities.entities || []).length})</h5>
+        ${renderDialogueList((entities.entities || []).slice(0, 12),
+          e => `${e.kind}: ${e.name}`,
+          e => `${e.standing} · ${e.mentions} mentions`)}
+        <h5>Recruitment Leads</h5>
+        ${renderDialogueList(entities.recruitment || [],
+          r => r.candidate_name,
+          r => `${r.status} · score ${Number(r.score).toFixed(2)} · ${r.reason}`)}
+      </section>
+      <section class="dialogue-card">
+        <h5>Romance (${(romance.romance || []).length})</h5>
+        ${renderDialogueList(romance.romance || [],
+          r => `${r.settler_id} → ${r.partner_id}`,
+          r => `${r.stage} · intimacy ${Number(r.intimacy).toFixed(2)}`)}
+        <h5>Would Initiate</h5>
+        ${renderDialogueList(romance.initiative || [],
+          r => `${r.settler_id} → ${r.partner_id}`,
+          r => `because: ${(r.because || []).join(", ")}`)}
+      </section>
+      <section class="dialogue-card">
+        <h5>Disease (${(disease.disease || []).length})</h5>
+        ${renderDialogueList(disease.disease || [],
+          d => `${d.settler_id}: ${d.disease}`,
+          d => `${d.stage}${d.quarantined ? " · quarantined" : ""}${d.treated ? " · treated" : ""}`)}
+      </section>
+      <section class="dialogue-card dialogue-wide">
+        <h5>Combat Incidents (${(combat.incidents || []).length})</h5>
+        ${renderDialogueList(combat.incidents || [],
+          c => `${c.aggressor} vs ${c.defender} @ ${c.location || "?"}`,
+          c => `${c.trigger_type} · ${c.aftermath}`)}
+      </section>
+    `;
+  } catch (e) {
+    body.innerHTML = `<div class="dim">Error loading world systems: ${esc(e.message)}</div>`;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const refreshBtn = document.getElementById("world-refresh-btn");
+  if (refreshBtn) refreshBtn.addEventListener("click", fetchWorldSystems);
+  document.querySelectorAll('.tab-btn[data-tab="world-tab"]').forEach(btn =>
+    btn.addEventListener("click", fetchWorldSystems));
+});

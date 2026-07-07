@@ -544,7 +544,10 @@ namespace GoingMedieval.LLM_NPCs
         }
 
         /// <summary>
-        /// Gets a settler's ID string (instance ID or game-internal ID).
+        /// Gets a settler's ID string (game-internal ID, else a stable
+        /// name-derived hash). Unity instance IDs change every session, which
+        /// fragmented settler memory across restarts; the name-hash fallback
+        /// keeps identity stable so memories survive save reloads.
         /// </summary>
         public static string GetSettlerId(GameObject go)
         {
@@ -568,7 +571,36 @@ namespace GoingMedieval.LLM_NPCs
                     return id;
             }
 
+            var stableName = SanitizeDisplayName(
+                TryResolveNameFromComponent(workerComp) ?? go.name);
+            var stableId = ComputeStableSettlerId(stableName);
+            if (!string.IsNullOrWhiteSpace(stableId))
+                return stableId;
+
             return go.GetInstanceID().ToString();
+        }
+
+        /// <summary>
+        /// Deterministic settler ID from the sanitized display name:
+        /// "gm_" + first 12 hex chars of SHA1(name). Stable across game
+        /// sessions and save reloads; scoped per save by the DB key.
+        /// Returns null for unusable names so callers can fall back.
+        /// </summary>
+        public static string ComputeStableSettlerId(string displayName)
+        {
+            if (string.IsNullOrWhiteSpace(displayName))
+                return null;
+            var normalized = displayName.Trim().ToLowerInvariant();
+            if (normalized == "unknown" || normalized.Length < 3)
+                return null;
+            using (var sha = System.Security.Cryptography.SHA1.Create())
+            {
+                var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(normalized));
+                var sb = new System.Text.StringBuilder("gm_", 15);
+                for (int i = 0; i < 6; i++)
+                    sb.Append(bytes[i].ToString("x2"));
+                return sb.ToString();
+            }
         }
 
         public static Component GetRuntimeWorkerComponent(GameObject go)
@@ -637,8 +669,10 @@ namespace GoingMedieval.LLM_NPCs
             if (runtimeComponent == null)
                 return false;
 
-            id = TryResolveIdFromComponent(runtimeComponent) ?? go.GetInstanceID().ToString();
             name = SanitizeDisplayName(TryResolveNameFromComponent(runtimeComponent) ?? go.name);
+            id = TryResolveIdFromComponent(runtimeComponent)
+                 ?? ComputeStableSettlerId(name)
+                 ?? go.GetInstanceID().ToString();
             return !string.IsNullOrWhiteSpace(id);
         }
 

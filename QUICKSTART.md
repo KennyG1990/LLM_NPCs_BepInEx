@@ -2,6 +2,27 @@
 
 Game root: `E:\SteamLibrary\steamapps\common\Going Medieval`
 
+## Agent iteration loop (no desktop automation needed)
+
+One-time human step: start the dashboard by double-clicking
+`start_dashboard.bat` (repo root) or running `python dashboard\dashboard_server.py`.
+It binds `127.0.0.1:8714` and hot-restarts itself whenever watched project
+files change, so it only ever needs to be started once per boot.
+
+Everything else is HTTP against `http://localhost:8714`:
+
+- `GET  /api/dev/status` — game running? built vs deployed DLL hash sync
+- `POST /api/dev/build` — `dotnet build -c Release -t:Rebuild` + deploy DLL to BepInEx plugins (`{"deploy":true}` default; refuses to deploy while game runs)
+- `POST /api/dev/game/launch` — start Going Medieval (`{"via":"steam"}` optional)
+- `POST /api/dev/game/kill` — stop the game (graceful, then forced)
+- `POST /api/dev/game/restart` — kill + relaunch (use after redeploying the DLL)
+- `GET  /api/game/screen` — JPEG frame of the game window (`?force_focus=true` to raise it)
+- `POST /api/game/input` — `{"action":"click","x":0.5,"y":0.5}` relative coords, `{"action":"text",...}`, `{"action":"keypress","key":"enter"}`
+
+Standard C# iteration: edit → `POST /api/dev/game/kill` → `POST /api/dev/build`
+→ `POST /api/dev/game/launch` → drive/verify via `/api/game/screen` + `/api/game/input`.
+Python/dashboard iteration: just edit; the file watcher restarts the server.
+
 ## Runtime Pieces
 
 - `LLM_NPCs.dll`: BepInEx plugin loaded by Going Medieval.

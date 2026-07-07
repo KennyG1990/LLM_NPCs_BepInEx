@@ -54,6 +54,9 @@
     <ItemGroup>
         <Compile Remove="tools\**\*.cs" />
         <None Include="tools\**\*" />
+        <!-- Decompiled game source is reference-only ground truth, never compiled -->
+        <Compile Remove="validation\**\*.cs" />
+        <None Include="validation\**\*.cs" />
     </ItemGroup>
 
     <!-- UI art assets removed — using procedural IMGUI while new UI kit is being built -->

@@ -1,0 +1,314 @@
+                                    WHERE id = ? AND save_id = ? AND settler_id = ?
+                                """, (reason, claim_id, save_id, settler_id))
+                            else:
+                                conn.execute("""
+                                    INSERT INTO dialogue_claims
+                                    (save_id, settler_id, speaker, claim_text, confidence, status, contradicted_by_claim_id, contradiction_reason, created_at)
+                                    VALUES (?, ?, 'system', ?, 1.0, 'contradicted', ?, ?, ?)
+                                """, (save_id, settler_id, claim_text, claim_id, reason, now))
+                            conn.execute("""
+                                UPDATE dialogue_states
+                                SET contradiction_count = contradiction_count + 1
+                                WHERE save_id = ? AND settler_id = ?
+                            """, (save_id, settler_id))
+                            insert_typed_memory(
+                                conn, save_id, settler_id, "betrayal",
+                                f"Contradiction noticed in dialogue: {claim_text}. {reason}", 8,
+                                metadata={"claim": claim_text, "reason": reason}
+                            )
+                            contradiction_count = 1
+
+                    barter_count = 0
+                    if barter_intent:
+                        if isinstance(barter_intent, dict):
+                            intent_type = barter_intent.get("intent_type") or barter_intent.get("type") or "barter"
+                            item = barter_intent.get("item") or barter_intent.get("ware") or ""
+                            terms = barter_intent.get("terms") or barter_intent.get("offer") or ""
+                        else:
+                            intent_type = "barter"
+                            item = ""
+                            terms = str(barter_intent)
+                        conn.execute("""
+                            INSERT INTO dialogue_barter_intents
+                            (save_id, settler_id, intent_type, item, terms, raw_json, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (save_id, settler_id, str(intent_type), str(item), str(terms), json_dumps_stable(barter_intent), now))
+                        conn.execute("""
+                            UPDATE dialogue_states
+                            SET barter_intent_count = barter_intent_count + 1
+                            WHERE save_id = ? AND settler_id = ?
+                        """, (save_id, settler_id))
+                        insert_typed_memory(
+                            conn, save_id, settler_id, "promises",
+                            f"Dialogue barter intent: {intent_type} {item} {terms}".strip(), 6,
+                            metadata={"barter_intent": barter_intent}
+                        )
+                        barter_count = 1
+
+                    state = build_dialogue_prompt_context(conn, save_id, settler_id)
+                self._send_json(200, {
+                    "ok": True,
+                    "trust": new_trust,
+                    "disclosure_level": disclosure,
+                    "claims_recorded": claim_count,
+                    "contradictions_recorded": contradiction_count,
+                    "barter_intents_recorded": barter_count,
+                    "state": state,
+                })
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            finally:
+                conn.close()
+            return
+
+        elif path == "/api/memory/event":
+            npc_id = payload.get("npc_id")
+            event_type = payload.get("event_type")
+            content = payload.get("content")
+            importance = int(payload.get("importance", 5))
+            save_id = payload.get("save_id")
+            ts = datetime.utcnow().timestamp()
+
+            conn = get_db_connection()
+            try:
+                with conn:
+                    upsert_memory_profile(conn, save_id, npc_id)
+                    typed_memory_id = insert_typed_memory(
+                        conn,
+                        save_id,
+                        npc_id,
+                        event_type,
+                        content,
+                        importance,
+                        metadata={"legacy_event_type": event_type}
+                    )
+                    # Save to facts as tier='0' (Recent)
+                    conn.execute("""
+                        INSERT INTO facts (npc_key, text, category, tier, importance, verbatim, created_at, last_used_at)
+                        VALUES (?, ?, ?, '0', ?, 1, ?, ?)""",
+                        (npc_id, content, event_type, importance, ts, ts)
+                    )
+                    fact_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+                    conn.execute(
+                        "UPDATE facts SET save_id = ?, settler_id = ?, source_typed_memory_id = ? WHERE id = ?",
+                        (save_id, npc_id, typed_memory_id, fact_id)
+                    )
+                    conn.execute("""
+                        INSERT INTO memories (npc_id, level, timestamp, session_seq, event_type, content, importance, save_id, typed_memory_id)
+                        VALUES (?, 0, ?, 0, ?, ?, ?, ?, ?)
+                    """, (npc_id, ts, event_type, content, importance, save_id, typed_memory_id))
+                    # If permanent, also save as tier='permanent'
+                    if importance >= 9:
+                        conn.execute("""
+                            INSERT INTO facts (npc_key, text, category, tier, importance, verbatim, created_at, last_used_at)
+                            VALUES (?, ?, ?, 'permanent', ?, 1, ?, ?)""",
+                            (npc_id, content, event_type, importance, ts, ts)
+                        )
+                        perm_fact_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+                        conn.execute(
+                            "UPDATE facts SET save_id = ?, settler_id = ?, source_typed_memory_id = ? WHERE id = ?",
+                            (save_id, npc_id, typed_memory_id, perm_fact_id)
+                        )
+                        conn.execute("""
+                            INSERT INTO permanent_memories (npc_id, timestamp, event_type, content, importance, save_id, typed_memory_id)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (npc_id, ts, event_type, content, importance, save_id, typed_memory_id))
+
+                    # Memory condensation call is removed in favor of RoleRAG.
+                    pass
+                self._send_json(200, {"ok": True, "message": "Event recorded successfully", "typed_memory_id": typed_memory_id})
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            finally:
+                conn.close()
+            return
+
+        elif path == "/api/memory/relationship":
+            save_id = payload.get("save_id")
+            subject = payload.get("subject")
+            obj = payload.get("object")
+            friendship = float(payload.get("friendship", 0.0))
+            romance = float(payload.get("romance", 0.0))
+            rivalry = float(payload.get("rivalry", 0.0))
+            trust = float(payload.get("trust", 0.5))
+            attraction = float(payload.get("attraction", 0.0))
+            fear = float(payload.get("fear", 0.0))
+            resentment = float(payload.get("resentment", 0.0))
+            standing = payload.get("standing", "neutral")
+            rel_type = payload.get("relationship_type", "strangers")
+            is_married = int(payload.get("is_married", 0))
+            marriage_date = payload.get("marriage_date")
+            total_int = int(payload.get("total_interactions", 0))
+            pos_int = int(payload.get("positive_interactions", 0))
+            neg_int = int(payload.get("negative_interactions", 0))
+            last_int = payload.get("last_interaction")
+            summary = payload.get("summary", "")
+
+            conn = get_db_connection()
+            try:
+                with conn:
+                    upsert_memory_profile(conn, save_id, subject)
+                    upsert_memory_profile(conn, save_id, obj)
+                    conn.execute("""
+                        INSERT OR REPLACE INTO relationships
+                        (save_id, subject, object, friendship, romance, rivalry, trust, attraction, fear, resentment,
+                         standing, relationship_type, is_married, marriage_date, total_interactions,
+                         positive_interactions, negative_interactions, last_interaction, summary, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (save_id, subject, obj, friendship, romance, rivalry, trust, attraction, fear, resentment,
+                         standing, rel_type, is_married, marriage_date, total_int,
+                         pos_int, neg_int, last_int, summary, datetime.utcnow().timestamp())
+                    )
+                    rel_text = summary or f"Relationship with {obj}: {rel_type}, standing={standing}, trust={trust:.2f}, resentment={resentment:.2f}"
+                    insert_typed_memory(
+                        conn,
+                        save_id,
+                        subject,
+                        "relationship",
+                        rel_text,
+                        importance=7 if total_int > 0 or is_married else 5,
+                        metadata={"object": obj, "relationship_type": rel_type, "standing": standing}
+                    )
+                self._send_json(200, {"ok": True, "message": "Relationship saved successfully"})
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            finally:
+                conn.close()
+            return
+
+        elif path == "/api/memory/pressures":
+            settler_id = payload.get("settler_id")
+            save_id = payload.get("save_id")
+            hunger = float(payload.get("hunger", 0.0))
+            thirst = float(payload.get("thirst", 0.0))
+            exhaustion = float(payload.get("exhaustion", 0.0))
+            injury = float(payload.get("injury", 0.0))
+            illness = float(payload.get("illness", 0.0))
+            threat = float(payload.get("threat", 0.0))
+            raid = float(payload.get("raid", 0.0))
+            mood = float(payload.get("mood", 0.0))
+            recreation = float(payload.get("recreation", 0.0))
+            work_skill = float(payload.get("work_skill", 0.0))
+            idle = float(payload.get("idle", 0.0))
+            social = float(payload.get("social", 0.0))
+            rel_tension = float(payload.get("rel_tension", 0.0))
+            colony_need = float(payload.get("colony_need", 0.0))
+            haul = float(payload.get("haul", 0.0))
+            attire = float(payload.get("attire", 0.0))
+
+            conn = get_db_connection()
+            try:
+                with conn:
+                    conn.execute("""
+                        INSERT OR REPLACE INTO settler_pressures
+                        (settler_id, save_id, timestamp, hunger_pressure, thirst_pressure, exhaustion_pressure,
+                         injury_pressure, illness_pressure, threat_pressure, raid_alert, mood_pressure,
+                         recreation_lag, work_skill_mismatch, idle_pressure, social_debt, relationship_tension,
+                         colony_need_score, haul_need, attire_mismatch)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (settler_id, save_id, datetime.utcnow().timestamp(), hunger, thirst, exhaustion,
+                         injury, illness, threat, raid, mood,
+                         recreation, work_skill, idle, social, rel_tension,
+                         colony_need, haul, attire)
+                    )
+                self._send_json(200, {"ok": True, "message": "Pressures saved successfully"})
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            finally:
+                conn.close()
+            return
+
+        elif path == "/api/memory/incident":
+            settler_id = payload.get("settler_id")
+            save_id = payload.get("save_id")
+            action = payload.get("action")
+            reasoning = payload.get("reasoning", "")
+            success = int(payload.get("success", 1))
+
+            conn = get_db_connection()
+            try:
+                with conn:
+                    upsert_memory_profile(conn, save_id, settler_id)
+                    conn.execute("""
+                        INSERT INTO incidents (settler_id, save_id, timestamp, action, reasoning, success, faction_id, action_type, target, confidence, priority, status, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'player', ?, ?, 1.0, 1, ?, ?)""",
+                        (settler_id, save_id, datetime.utcnow().timestamp(), action, reasoning, success, action, reasoning, "success" if success == 1 else "failed", datetime.utcnow().timestamp())
+                    )
+                    incident_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+                    insert_typed_memory(
+                        conn,
+                        save_id,
+                        settler_id,
+                        "decision",
+                        f"Decided to {action}: {reasoning}",
+                        importance=6 if success == 1 else 4,
+                        metadata={"incident_id": incident_id, "success": success}
+                    )
+                self._send_json(200, {"ok": True, "message": "Incident logged successfully"})
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            finally:
+                conn.close()
+            return
+
+        elif path == "/api/colony/event":
+            save_id = payload.get("save_id")
+            state = payload.get("state", {})
+            rec = payload.get("rec", {})
+            narrative = payload.get("narrative", "")
+
+            conn = get_db_connection()
+            try:
+                with conn:
+                    conn.execute("""
+                        INSERT INTO colony_events
+                        (save_id, timestamp, avg_mood, avg_hunger, avg_health, total_settlers,
+                         idle_settlers, colony_wealth, threat_level, pending_blueprints,
+                         recommendation_type, recommendation_desc, narrative)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (save_id, datetime.utcnow().timestamp(),
+                         float(state.get("AverageMood", 0)), float(state.get("AverageHunger", 0)), float(state.get("AverageHealth", 0)),
+                         int(state.get("TotalSettlers", 0)), int(state.get("IdleSettlers", 0)), float(state.get("ColonyWealth", 0)),
+                         float(state.get("ThreatLevel", 0)), int(state.get("PendingBlueprints", 0)),
+                         rec.get("Type", "none"), rec.get("Description", "none"), narrative)
+                    )
+                    colony_event_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+                    for row in conn.execute("SELECT settler_id FROM npcs WHERE save_id = ?", (save_id,)):
+                        insert_typed_memory(
+                            conn,
+                            save_id,
+                            row["settler_id"],
+                            "colony_event",
+                            f"Colony adviser recommended {rec.get('Type', 'none')}: {rec.get('Description', 'none')} {narrative}".strip(),
+                            importance=7,
+                            metadata={"colony_event_id": colony_event_id}
+                        )
+                self._send_json(200, {"ok": True, "message": "Colony event saved successfully"})
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            finally:
+                conn.close()
+            return
+
+        if gm_systems.dispatch(self, GM_CTX, "POST", path, query=None, payload=payload):
+            return
+        if gm_devops.dispatch(self, GM_CTX, "POST", path, query=None, payload=payload):
+            return
+        self._send_json(404, {"error": "not found"})
+
+def main():
+    init_db()
+    start_dev_file_watcher()
+    host = "127.0.0.1"
+    port = 8714
+    server = ReusableThreadingHTTPServer((host, port), DashboardHandler)
+    print(f"Going Medieval LLM NPCs Webviewer Dashboard listening on http://{host}:{port}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("Shutting down dashboard server...")
+    finally:
+        server.server_close()
+
+if __name__ == "__main__":
+    main()

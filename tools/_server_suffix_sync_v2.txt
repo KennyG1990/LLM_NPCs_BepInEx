@@ -1,0 +1,103 @@
+        elif path == "/api/dialogue/exchange":
+            save_id = payload.get("save_id")
+            settler_id = payload.get("settler_id")
+            player_text = (payload.get("player_text") or "").strip()
+            npc_text = (payload.get("npc_text") or "").strip()
+            claims = payload.get("claims") or []
+            contradiction = payload.get("contradiction")
+            barter_intent = payload.get("barter_intent")
+            trust_delta = numeric_or_default(payload.get("trust_delta"), 0.0)
+            voice_profile = (payload.get("voice_profile") or "").strip()
+            backstory_voice = (payload.get("backstory_voice") or "").strip()
+            if not save_id or not settler_id:
+                self._send_json(400, {"error": "save_id and settler_id are required"})
+                return
+
+            conn = get_db_connection()
+            try:
+                with conn:
+                    now = datetime.utcnow().timestamp()
+                    upsert_memory_profile(conn, save_id, settler_id)
+                    current_trust = get_dialogue_trust(conn, save_id, settler_id)
+                    auto_contradiction = None if contradiction else detect_dialogue_contradiction(
+                        conn, save_id, settler_id, player_text, npc_text, claims
+                    )
+                    if auto_contradiction:
+                        contradiction = auto_contradiction
+                    prior_contradictions_row = conn.execute(
+                        "SELECT contradiction_count FROM dialogue_states WHERE save_id = ? AND settler_id = ?",
+                        (save_id, settler_id)
+                    ).fetchone()
+                    prior_contradictions = prior_contradictions_row["contradiction_count"] if prior_contradictions_row else 0
+                    trust_delta, trust_reasons = compute_trust_delta(
+                        trust_delta,
+                        contradiction=bool(contradiction),
+                        prior_contradictions=prior_contradictions,
+                        claims_recorded=len(claims) if isinstance(claims, list) else (1 if claims else 0),
+                    )
+                    new_trust = clamp(current_trust + trust_delta, 0.0, 1.0)
+                    disclosure = dialogue_disclosure_level(new_trust)
+                    conn.execute("""
+                        INSERT INTO dialogue_states
+                        (save_id, settler_id, trust, disclosure_level, voice_profile, backstory_voice, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(save_id, settler_id) DO UPDATE SET
+                            trust = excluded.trust,
+                            disclosure_level = excluded.disclosure_level,
+                            voice_profile = CASE WHEN excluded.voice_profile != '' THEN excluded.voice_profile ELSE dialogue_states.voice_profile END,
+                            backstory_voice = CASE WHEN excluded.backstory_voice != '' THEN excluded.backstory_voice ELSE dialogue_states.backstory_voice END,
+                            updated_at = excluded.updated_at
+                    """, (save_id, settler_id, new_trust, disclosure, voice_profile, backstory_voice, now))
+
+                    if trust_delta != 0 or trust_reasons:
+                        record_trust_event(
+                            conn, save_id, settler_id, trust_delta,
+                            "; ".join(trust_reasons) if trust_reasons else "no rule fired",
+                            "exchange", new_trust
+                        )
+
+                    if player_text:
+                        insert_typed_memory(
+                            conn, save_id, settler_id, "dialogue_player", player_text, 6,
+                            metadata={"speaker": "player", "p2": True}
+                        )
+                    if npc_text:
+                        insert_typed_memory(
+                            conn, save_id, settler_id, "dialogue_npc", npc_text, 6,
+                            metadata={"speaker": "npc", "p2": True}
+                        )
+
+                    claim_count = 0
+                    for claim in claims if isinstance(claims, list) else [claims]:
+                        if isinstance(claim, dict):
+                            claim_text = (claim.get("text") or claim.get("claim") or "").strip()
+                            speaker = claim.get("speaker") or "npc"
+                            confidence = numeric_or_default(claim.get("confidence"), 1.0)
+                        else:
+                            claim_text = str(claim).strip()
+                            speaker = "npc"
+                            confidence = 1.0
+                        if not claim_text:
+                            continue
+                        conn.execute("""
+                            INSERT INTO dialogue_claims
+                            (save_id, settler_id, speaker, claim_text, confidence, status, created_at)
+                            VALUES (?, ?, ?, ?, ?, 'active', ?)
+                        """, (save_id, settler_id, str(speaker), claim_text, confidence, now))
+                        claim_count += 1
+
+                    contradiction_count = 0
+                    if contradiction:
+                        if isinstance(contradiction, dict):
+                            claim_text = (contradiction.get("claim") or contradiction.get("claim_text") or "").strip()
+                            reason = (contradiction.get("reason") or contradiction.get("contradiction_reason") or "Contradicted in dialogue").strip()
+                        else:
+                            claim_text = str(contradiction).strip()
+                            reason = "Contradicted in dialogue"
+                        if claim_text:
+                            claim_id = contradiction.get("claim_id") if isinstance(contradiction, dict) else None
+                            if claim_id:
+                                conn.execute("""
+                                    UPDATE dialogue_claims
+                                    SET status = 'contradicted',
+                                        contradiction_reason = ?

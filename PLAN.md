@@ -1,6 +1,15 @@
 # Going Medieval AI Influence Roadmap
 
-Last updated: 2026-07-05
+Last updated: 2026-07-06
+
+> 2026-07-06 sweep (Cowork session): P2 slice 2 complete (contradiction
+> matcher v2, deterministic trust rules + trust_events, voice authoring,
+> barter resolution, dashboard panels). P3-P10 BACKEND slices implemented in
+> `dashboard/gm_systems.py` behind dispatch hooks, verified by
+> `tools/gm_systems_selftest.py` and `tools/dialogue_p2_slice2_selftest.py`
+> (all six selftests PASS). Dashboard gained a World Systems tab. In-game C#
+> surfacing for P3+ remains open (host dotnet gate). See `BACKLOG.md` and
+> `validation/SCENARIO_CHECKLISTS.md`.
 
 This roadmap locks the implementation order for the design documents in:
 
@@ -59,7 +68,7 @@ Acceptance gates:
 - Trust level changes what the settler will reveal.
 - Dialogue-generated claims are persisted and can be contradicted later.
 
-Status: slice 1 started on 2026-07-05. Backend dialogue state, trust-gated prompt context, DB-backed claims/contradictions, barter-intent hooks, and C# prompt integration are implemented and covered by `tools/dialogue_p2_selftest.py`. See `P2_DIALOGUE_WORKLOG.md`.
+Status: RELEASE CANDIDATE 2026-07-06. Slice 1 (2026-07-05) + slice 2 (2026-07-06: contradiction matcher v2, deterministic trust rules + trust_events audit, barter resolution, authored voice). LIVE IN-GAME PROOF on save `Wolferlow`, settler Alison Ridge (-1015528), driven entirely through the dashboard game stream: floating dialogue UI opened, memory-referencing reply recorded as typed memories, claim persisted ("food stores are low..."), player challenge auto-detected -> claim contradicted, trust 0.50 -> 0.52 (+0.02 consistent claims) -> 0.44 (-0.08 contradiction offense #1), all in trust_events. Known RC issues: (1) settler numeric IDs change per game session (5 Alison Ridge IDs in Wolferlow) - cross-session memory continuity depends on unstable identity, needs canonical identity mapping in C#; (2) voice builder ingests internal trait tokens (e.g. "midageeffector01") - needs trait sanitization.
 
 ### P3 - `09 - AI Actions System.md`
 
@@ -78,6 +87,13 @@ Deliverables:
   - return to work
 - Add save/reload persistence for queued orders.
 - Add dashboard order inspection.
+
+Status 2026-07-06: backend + C# OrderExecutor live. Acceptance proven in-game:
+"Prioritize mining, then return to work" set Alison's Mine priority to 1
+(JOBS panel evidence) and completed through the queue; construction pipeline
+(propose→approve→order→execute) also ran live. Remaining for RC: true
+move/patrol/attack pathing via MoveTo reflection, follow_player, and the
+dialogue→order bridge. See BACKLOG.md and NPC_BUILDING_FRAMEWORK.md.
 
 Acceptance gates:
 

@@ -305,9 +305,19 @@ namespace GoingMedieval.LLM_NPCs
             DecisionInterval = Config.Bind(
                 "Gameplay",
                 "DecisionInterval",
-                10f,
-                "Seconds between LLM decisions for each NPC"
+                180f,
+                "Seconds between routine LLM decisions for each NPC. Event triggers "
+                + "(raids, etc.) still fire immediately. 10s burned ~1400 calls/hr; "
+                + "180s (3 min) is a reasonable idle cadence — raise for lower cost."
             );
+            // Guard against the old cost-heavy default persisted in existing
+            // config files: never let routine decisions run more than once a
+            // minute (the 10s setting burned thousands of LLM calls/hour).
+            if (DecisionInterval.Value < 60f)
+            {
+                Log.LogWarning($"[Config] DecisionInterval was {DecisionInterval.Value}s (too frequent/expensive); raising to 180s.");
+                DecisionInterval.Value = 180f;
+            }
 
             EnableFullAutonomy = Config.Bind(
                 "Gameplay",
@@ -560,6 +570,19 @@ namespace GoingMedieval.LLM_NPCs
             LogToFile($"[Plugin:ProcessNPCs] Found {settlers.Count} validated settlers");
 
             TryStartColonyInfluence(settlers);
+
+            // P3: execute queued player orders from the dashboard ai_orders queue.
+            if (OrderExecutor.ShouldPoll() && MemoryManager != null)
+            {
+                OrderExecutor.PollAndExecute(settlers, MemoryManager.ActiveSaveId);
+            }
+
+            // B3 groundwork: dump the game's construction API surface once the
+            // save is loaded so placement code can target real signatures.
+            if (settlers.Count > 0 && MemoryManager != null)
+            {
+                GameApiScanner.ScanAndReport(MemoryManager.ActiveSaveId);
+            }
             
             foreach (var settler in settlers)
             {
@@ -580,6 +603,27 @@ namespace GoingMedieval.LLM_NPCs
                     StartCoroutine(ProcessSettlerTracked(settler, id));
                 }
             }
+        }
+
+        /// <summary>
+        /// Force ONE settler through a REAL Player2 decision cycle right now,
+        /// bypassing the decision-interval gate. Player2 genuinely chooses the
+        /// action (build_stockpile is one of its tools) and the settler acts on
+        /// it. Used to demonstrate/verify the autonomous "villager builds because
+        /// Player2 told them" loop on demand instead of waiting on the timer.
+        /// </summary>
+        public static void ForceProcessSettler(Settler settler)
+        {
+            if (Instance == null || settler == null || settler.gameObject == null)
+                return;
+            var id = GameBridge.GetSettlerId(settler.gameObject) ?? settler.gameObject.GetInstanceID().ToString();
+            if (!Instance._activeDecisionRequests.Add(id))
+            {
+                LogToFile($"[Plugin:ForceProcessSettler] Decision already in flight for {id}, skipping.");
+                return;
+            }
+            LogToFile($"[Plugin:ForceProcessSettler] Forcing a real Player2 decision for {id} ({settler.Name})");
+            Instance.StartCoroutine(Instance.ProcessSettlerTracked(settler, id));
         }
 
         private void TryStartColonyInfluence(List<Settler> settlers)

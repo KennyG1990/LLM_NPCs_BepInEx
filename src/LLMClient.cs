@@ -168,6 +168,11 @@ namespace GoingMedieval.LLM_NPCs
                     }
                 }),
                 JObject.FromObject(new {
+                    name = "build_stockpile",
+                    description = "Raise a new stockpile zone in the world near where you stand, giving the colony space to store food and resources. Choose this when storage is scarce or food reserves are low.",
+                    parameters = new { type = "object", properties = new { } }
+                }),
+                JObject.FromObject(new {
                     name = "draft",
                     description = "(TACTICAL) Draft the settler for combat and manually direct them to coordinates.",
                     parameters = new {

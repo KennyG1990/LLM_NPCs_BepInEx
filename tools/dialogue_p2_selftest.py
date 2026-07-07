@@ -83,7 +83,9 @@ def main():
                 },
             })
             assert result["ok"] is True
-            assert result["trust"] == 0.4
+            # Slice 2 trust rules: model advisory (-0.10 capped) + contradiction
+            # rule (-0.08 first offense) = -0.18 from the 0.50 baseline.
+            assert abs(result["trust"] - 0.32) < 1e-6, result["trust"]
             assert result["claims_recorded"] == 1
             assert result["contradictions_recorded"] == 1
             assert result["barter_intents_recorded"] == 1
@@ -103,7 +105,8 @@ def main():
                 f"{base}/api/dialogue/state?{urllib.parse.urlencode({'save_id': save_id, 'settler_id': settler_id})}"
             )
             context = state["state"]["prompt_context"]
-            assert "Trust toward player: 0.32" in context
+            # After the challenge exchange: second offense costs -0.10 (0.32 -> 0.22).
+            assert "Trust toward player: 0.22" in context
             assert "Alison is ravenous and wants food" in context
             assert "Known contradictions:" in context
             assert "Open barter intents:" in context

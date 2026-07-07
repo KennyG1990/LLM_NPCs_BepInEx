@@ -84,6 +84,7 @@
           <button type="button" class="tab-btn" data-tab="simulator-tab">Decision Simulator</button>
           <button type="button" class="tab-btn" data-tab="incidents-tab">Incidents History</button>
           <button type="button" class="tab-btn" data-tab="game-control-tab">Game Control Bridge</button>
+          <button type="button" class="tab-btn" data-tab="world-tab">World Systems</button>
         </div>
 
         <div class="panel-body tab-content-container">
@@ -131,6 +132,15 @@
             <h4 id="dialogue-title">Select a settler to view dialogue state</h4>
             <div id="dialogue-body" class="dialogue-state-grid">
               <div class="dim">No dialogue state loaded.</div>
+            </div>
+          </div>
+
+          <!-- Tab: World Systems (P3+ backends) -->
+          <div id="world-tab" class="tab-content">
+            <h4>World Systems <button type="button" id="world-refresh-btn" class="tab-btn" style="float:right">Refresh</button></h4>
+            <p class="section-desc">Living proof of the P3+ backends: AI orders, tracked entities, world events, diplomacy, romance, disease and combat incidents for the active save.</p>
+            <div id="world-body" class="dialogue-state-grid">
+              <div class="dim">No world data loaded. Select a save and open this tab.</div>
             </div>
           </div>
 

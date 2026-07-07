@@ -238,6 +238,8 @@ namespace GoingMedieval.LLM_NPCs
                                                                       "Construct a special mood-boosting building."));
             options.Add(new ScoredOption("prioritize_construction",  colonyNeedScore * 0.7f,
                                                                       "Focus on completing the colony's most needed structure."));
+            options.Add(new ScoredOption("build_stockpile",          colonyNeedScore * 0.6f,
+                                                                      "Raise a new stockpile zone near you so the colony has space to store food and resources."));
             options.Add(new ScoredOption("rebrand",                  0.15f, "Upgrade wooden walls to stone versions."));
 
             // --- Attire actions ---
@@ -650,7 +652,7 @@ namespace GoingMedieval.LLM_NPCs
                 // Work
                 "continue_job", "switch_job", "explore",
                 // Construction / Work
-                "gather", "haul", "repair", "build_special", "prioritize_construction", "rebrand",
+                "gather", "haul", "repair", "build_special", "prioritize_construction", "build_stockpile", "rebrand",
                 // Attire
                 "change_clothing",
                 // Other
@@ -914,6 +916,11 @@ namespace GoingMedieval.LLM_NPCs
                         ExecutePrioritizeConstruction(settler, buildTarget);
                         break;
 
+                    case "build_stockpile":
+                    case "place_stockpile":
+                        ExecuteBuildStockpile(settler);
+                        break;
+
                     default:
                         LLMNPCsPlugin.Log.LogWarning($"Unknown action: {decision.Action}");
                         break;
@@ -922,6 +929,29 @@ namespace GoingMedieval.LLM_NPCs
             catch (Exception ex)
             {
                 LLMNPCsPlugin.Log.LogError($"Failed to execute decision: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// A settler acts on its own reasoning (Player2) to raise a stockpile
+        /// zone in the world near where it stands. This is the autonomous
+        /// "villager builds their own stockpile" action.
+        /// </summary>
+        private static void ExecuteBuildStockpile(Settler settler)
+        {
+            try
+            {
+                if (settler == null || settler.gameObject == null)
+                    return;
+                var result = StockpilePlacer.TryPlaceStockpileNear(settler.gameObject, 2);
+                if (result != null && result.StartsWith("ok"))
+                    LLMNPCsPlugin.Log.LogInfo($"[{settler.name}] Built a stockpile: {result}");
+                else
+                    LLMNPCsPlugin.Log.LogWarning($"[{settler.name}] Stockpile build did not place: {result}");
+            }
+            catch (Exception ex)
+            {
+                LLMNPCsPlugin.Log.LogError($"[{settler?.name}] ExecuteBuildStockpile failed: {ex}");
             }
         }
 

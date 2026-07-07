@@ -1,0 +1,2295 @@
+{
+ "save_id": "Wolferlow",
+ "scanned_at": "2026-07-07T00:01:20.2000401Z",
+ "type_count": 116,
+ "types": [
+  {
+   "type": "SinglePlacementPreviewGridRuler",
+   "base": "MonoBehaviour",
+   "methods": [
+    "Void Scale(Vec3Int size)",
+    "Void ResetRulers()"
+   ],
+   "properties": []
+  },
+  {
+   "type": "ResourcePileIndicatorView",
+   "base": "MonoBehaviour",
+   "methods": [
+    "Void SetIndicator(ResourcePileIndicatorStatus indicatorStatus)",
+    "Void UpdateMeshRenderer()",
+    "ResourcePileIndicatorStatus GetIndicator()"
+   ],
+   "properties": []
+  },
+  {
+   "type": "ResourcePileIndicatorStatus",
+   "base": "Enum",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "Effects.BlueprintPlacedEffect",
+   "base": "MonoBehaviour",
+   "methods": [
+    "BaseBuildingViewComponent get_BaseBuildingViewComponent()",
+    "Single get_Progress()",
+    "Void set_Progress(Single value)",
+    "Void PlacedAnimationFinished()"
+   ],
+   "properties": [
+    "BaseBuildingViewComponent BaseBuildingViewComponent ro",
+    "Single Progress rw"
+   ]
+  },
+  {
+   "type": "Effects.BlueprintPlaceVisualsManager",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "Void PlaySequence()",
+    "Void AddBlueprintToList(BlueprintPlacedEffect item)",
+    "Void StartSetup(Vec3Int start)",
+    "Void SortBlueprints(Vec3Int end)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "Constructables.Managers.BuildingsManagerCommon",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "Boolean get_CoroutineRunning()",
+    "Void StartResourceChangedRefreshBlueprintsCoroutine(IList`1 buildingBlueprints, IEnumerable`1 workers, Int32 pause)"
+   ],
+   "properties": [
+    "Boolean CoroutineRunning ro"
+   ]
+  },
+  {
+   "type": "Constructables.Managers.BuildingsManagerCommon+<ResourceChangedRefreshBlueprintsCoroutine>d__11",
+   "base": "Object",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.ConstructionPlacementInputListener",
+   "base": "InputListener",
+   "methods": [
+    "Void MouseButtonDown(Int32 button, Vector3 position)",
+    "Void MouseButtonTick(Int32 button, Vector3 position)",
+    "Void MouseButtonUp(Int32 button, Vector3 position)",
+    "Boolean IsStopEventPropagation()"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.LockedBuildingsManager",
+   "base": "Object",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Views.Resources.ResourcePileView",
+   "base": "SelectableObject",
+   "methods": [
+    "ResourcePileInstance get_ResourcePileInstance()",
+    "HideResource get_HideResource()",
+    "StatInstance get_Health()",
+    "StatInstance get_Freshenss()",
+    "StatInstance get_Fermentation()",
+    "Boolean get_Visible()",
+    "Void add_OnDisposedEvent(Action`1 value)",
+    "Void remove_OnDisposedEvent(Action`1 value)",
+    "Boolean get_HasDisposed()",
+    "Void Dispose()",
+    "String GetAdditionalMenuId()",
+    "IGoapTargetable GetAsTarget()",
+    "Transform GetGuiOverlayHookTransform()",
+    "Boolean ShouldMenuFollowHookTransform()",
+    "WorldObject GetAsWorldObject()",
+    "Void DetachAllEvents()",
+    "Void Setup(ResourcePileInstance resourcePileInstance)",
+    "Void ResetMeshTransform()",
+    "Void SetupMeshVariations(ResourcePileInstance resourcePileInstance)",
+    "Void SetupMeshVariations(Resource resource)",
+    "InfoPanelData UpdateCallback()",
+    "InfoPanelData GetInfoPanelData()",
+    "String GetMultiselectName()",
+    "String GetSimpleName()",
+    "Void OnPileResourceCountChanged(ResourcePileInstance pile, Resource blueprint, Int32 amount)",
+    "Void OnPileResourceCountChanged()",
+    "Void OnUrgentHaulPile(OrderEventData eventData)",
+    "Void OnLeavingMainScene()"
+   ],
+   "properties": [
+    "ResourcePileInstance ResourcePileInstance rw",
+    "HideResource HideResource ro",
+    "StatInstance Health ro",
+    "StatInstance Freshenss ro",
+    "StatInstance Fermentation ro",
+    "Boolean Visible ro",
+    "Boolean HasDisposed rw"
+   ]
+  },
+  {
+   "type": "NSMedieval.StorageUniversal.UniversalStorageBlueprint",
+   "base": "Model",
+   "methods": [
+    "Int32 get_MaxPileCount()",
+    "Int32 get_MaxAmount()",
+    "Boolean get_OverrideStackingLimit()",
+    "List`1 get_StorableResourceGroups()",
+    "List`1 get_ResourceGroups()",
+    "ZonePriority get_ZonePriority()",
+    "Single get_RefillPercentageThreshold()",
+    "List`1 GetParentGroups()",
+    "String GetID()"
+   ],
+   "properties": [
+    "Int32 MaxPileCount ro",
+    "Int32 MaxAmount ro",
+    "Boolean OverrideStackingLimit ro",
+    "List`1 StorableResourceGroups ro",
+    "List`1 ResourceGroups ro",
+    "ZonePriority ZonePriority ro",
+    "Single RefillPercentageThreshold ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Tutorial.ProtectStockpileTutorialStep",
+   "base": "TutorialStep",
+   "methods": [
+    "Void BeginStep()",
+    "Void Tick()"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Tutorial.StockpileTutorialStep",
+   "base": "TutorialStep",
+   "methods": [
+    "Void BeginStep()"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Stockpiles.StockpileManager",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "IEnumerable`1 get_Stockpiles()",
+    "Void SpawnProfileStockpiles()",
+    "StockpileView GetView(StockpileInstance instance)",
+    "Void Destroy(StockpileInstance instance)",
+    "Void SpawnStockpile(Stockpile blueprint, Vec3Int start, Vec3Int end)",
+    "Boolean StockpileExists(Vec3Int gridPosition)",
+    "Boolean CanPlaceStockpile(Vec3Int v, Boolean ignoreExistingStockpileCheck)",
+    "Void SetStockpileToModify(StockpileInstance stockpileToExpand)",
+    "Void ModifyStockpile(Vec3Int start, Vec3Int end, OrderType orderType)"
+   ],
+   "properties": [
+    "IEnumerable`1 Stockpiles ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Stockpiles.Stockpile",
+   "base": "Model",
+   "methods": [
+    "StorageBase get_StorageBase()",
+    "List`1 get_ResourceGroups()",
+    "Single get_LayerHideOffset()",
+    "Single get_LayerShadowOffset()",
+    "BuildingCategoryUI get_BuildingCategoryUI()",
+    "BuildingSubCategoryUI get_BuildingSubCategoryUI()",
+    "LocKeys[] get_LocKeys()",
+    "String get_IconPath()",
+    "ZonePriority get_ZonePriority()",
+    "String get_IconColorOverlay()",
+    "String GetID()"
+   ],
+   "properties": [
+    "StorageBase StorageBase ro",
+    "List`1 ResourceGroups ro",
+    "Single LayerHideOffset ro",
+    "Single LayerShadowOffset ro",
+    "BuildingCategoryUI BuildingCategoryUI ro",
+    "BuildingSubCategoryUI BuildingSubCategoryUI ro",
+    "LocKeys[] LocKeys ro",
+    "String IconPath ro",
+    "ZonePriority ZonePriority ro",
+    "String IconColorOverlay ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Stockpiles.StockpileColors",
+   "base": "Object",
+   "methods": [
+    "Color GetNextColor()",
+    "Color GetRandomColor()",
+    "Color GetColor(String colorID)",
+    "Color GetColor(Int32 index)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Stockpiles.StockpileController",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "Void add_StockpilePlacedEvent(Action`1 value)",
+    "Void remove_StockpilePlacedEvent(Action`1 value)",
+    "Void add_StockpileDestroyedEvent(Action`1 value)",
+    "Void remove_StockpileDestroyedEvent(Action`1 value)",
+    "Void StockpilePlaced(StockpileInstance stockpileInstance)",
+    "Void StockpileDestroyed(StockpileInstance stockpileInstance)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Stockpiles.StockpileInstance",
+   "base": "WorldObject",
+   "methods": [
+    "Boolean get_BlueprintExists()",
+    "Void add_OnPileAddedToGridEvent(Action value)",
+    "Void remove_OnPileAddedToGridEvent(Action value)",
+    "UInt16 get_PathfindingPenalty()",
+    "List`1 get_DefaultResourceGroups()",
+    "ZonePriority get_Priority()",
+    "Boolean get_AnimalFeeder()",
+    "Boolean get_PrisonFeeder()",
+    "Stockpile get_Blueprint()",
+    "String get_StorageName()",
+    "Single get_RefillPercentageThreshold()",
+    "List`1 get_Positions()",
+    "String get_ObjectId()",
+    "BuildingSubCategoryUI get_BuildingSubcategoryUI()",
+    "Dictionary`2 get_Grid()",
+    "ResourcesFilter get_ResourcesFilter()",
+    "Vec3Int get_Start()",
+    "Void set_Start(Vec3Int value)",
+    "Vec3Int get_End()",
+    "Void set_End(Vec3Int value)",
+    "Boolean get_Underwater()",
+    "Void set_Underwater(Boolean value)",
+    "Int32 get_StoredResourcesCount()",
+    "Boolean get_IsPlayerOwned()",
+    "Boolean get_CanBeUsedInProduction()",
+    "Void SetMap(VillageMap map)",
+    "String ToString()",
+    "Void WaterLevelChanged()",
+    "Void PasteStorageSettings(IStorage original)",
+    "Boolean ContainsPile(ResourcePileInstance pile)",
+    "Boolean ReserveStorage(ResourceInstance resource, CreatureBase agent, SimpleResourceCount& storedAmount, Vec3Int& position)",
+    "Void ReleaseReservations(CreatureBase agent)",
+    "List`1 GetStoredPiles()",
+    "Void SetCanBeUsedInProduction(Boolean allowed)",
+    "Void SetHitPointsPercent(IntRange range)",
+    "Void SetQuality(IntRange range)",
+    "Boolean IsBlueprintAllowed(Resource blueprint)",
+    "Void SetName(String name)",
+    "Void SetPriority(ZonePriority priority)",
+    "ResourcePileInstance GetResourcePileGridPosition(Vec3Int gridPosition)",
+    "Boolean TryStore(ResourceInstance resourceInstance)",
+    "Void SetupAfterLoading()",
+    "Void Dispose()",
+    "SelectableObject GetView()",
+    "Boolean ContainsGridPosition(Vec3Int worldPos)",
+    "Boolean CanStore(ResourceInstance resource, CreatureBase creatureBase)",
+    "Void Carve(Vec3Int gridPosition)",
+    "Void AllowResource(Resource resource, Boolean allowed)",
+    "Boolean IsExpandValid(Vec3Int[,] newStockpileGridSpaces)",
+    "Void RefreshGridSpaces(Vec3Int[,] newStockpileGridSpaces)"
+   ],
+   "properties": [
+    "Boolean BlueprintExists ro",
+    "UInt16 PathfindingPenalty ro",
+    "List`1 DefaultResourceGroups ro",
+    "ZonePriority Priority ro",
+    "Boolean AnimalFeeder ro",
+    "Boolean PrisonFeeder ro",
+    "Stockpile Blueprint ro",
+    "String StorageName ro",
+    "Single RefillPercentageThreshold ro",
+    "List`1 Positions ro",
+    "String ObjectId ro",
+    "BuildingSubCategoryUI BuildingSubcategoryUI ro",
+    "Dictionary`2 Grid ro",
+    "ResourcesFilter ResourcesFilter ro",
+    "Vec3Int Start rw",
+    "Vec3Int End rw",
+    "Boolean Underwater rw",
+    "Int32 StoredResourcesCount ro",
+    "Boolean IsPlayerOwned ro",
+    "Boolean CanBeUsedInProduction ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Stockpiles.StockpileRepository",
+   "base": "DynamicJsonRepository`2",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Stockpiles.StockpileReservationInfo",
+   "base": "ValueType",
+   "methods": [
+    "SimpleResourceCount get_Count()",
+    "Resource get_Blueprint()",
+    "Int32 get_Amount()",
+    "CreatureBase get_Agent()"
+   ],
+   "properties": [
+    "SimpleResourceCount Count ro",
+    "Resource Blueprint ro",
+    "Int32 Amount ro",
+    "CreatureBase Agent ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Stockpiles.StockpileResourceGroups",
+   "base": "Model",
+   "methods": [
+    "List`1 get_ResourceGroups()",
+    "String GetID()"
+   ],
+   "properties": [
+    "List`1 ResourceGroups ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Stockpiles.StockpileSpaceData",
+   "base": "Object",
+   "methods": [
+    "ResourcePileInstance get_Pile()",
+    "Vec3Int get_Position()",
+    "List`1 get_ReservationInfos()",
+    "Void ClearReservations()",
+    "Void ReleaseReservation(CreatureBase creatureBase)",
+    "Boolean HasAnyReservations()",
+    "StockpileReservationInfo GetReservationInfo(CreatureBase reserver)",
+    "Int32 GetTotalReservedResourceCount()",
+    "Void Reserve(StockpileReservationInfo info)",
+    "Void SetPile(ResourcePileInstance pile)",
+    "Void Serialize(FVSerializer serializer)"
+   ],
+   "properties": [
+    "ResourcePileInstance Pile ro",
+    "Vec3Int Position ro",
+    "List`1 ReservationInfos ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Stockpiles.StockpileSpaceDataDictionary",
+   "base": "SerializableDictionary`2",
+   "methods": [
+    "Void Serialize(FVSerializer serializer)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Stockpiles.StockpileView",
+   "base": "SelectableObject",
+   "methods": [
+    "StockpileInstance get_StockpileInstance()",
+    "OcclusionCullingMode get_OcclusionCullingMode()",
+    "Boolean get_IsOcclusionCulled()",
+    "Void set_IsOcclusionCulled(Boolean value)",
+    "Bounds get_OcclusionLocalSpaceBoundingBox()",
+    "Vector3 get_WorldPosition()",
+    "Boolean get_Visible()",
+    "WorldObject GetAsWorldObject()",
+    "Void Setup(StockpileInstance stockpileInstance, Color color)",
+    "Void Setup(Mesh mesh)",
+    "Void Destroy()",
+    "InfoPanelData GetInfoPanelData()",
+    "String GetMultiselectName()",
+    "String GetSimpleName()",
+    "InfoPanelData UpdateCallback()"
+   ],
+   "properties": [
+    "StockpileInstance StockpileInstance rw",
+    "OcclusionCullingMode OcclusionCullingMode ro",
+    "Boolean IsOcclusionCulled rw",
+    "Bounds OcclusionLocalSpaceBoundingBox ro",
+    "Vector3 WorldPosition ro",
+    "Boolean Visible ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.MovableBuildings.MoveBuildingsManager",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "Int32 get_Count()",
+    "BaseBuildingInstance get_BuildingToMove()",
+    "MovableBuildingPileInstance get_PileToInstall()",
+    "BaseBuildingInstance GetSourceBuilding(BaseBuildingInstance moveBlueprint)",
+    "BaseBuildingInstance GetMovedBaseBuildingInstance()",
+    "BaseBuildingBlueprint GetMovedObjectBlueprint()",
+    "BaseBuildingInstance GetMoveBlueprintSourceBuilding(BaseBuildingInstance moveBlueprint)",
+    "IReadOnlyList`1 GetMovedObjectMeshVariations()",
+    "Void SetBuildingToMove(BaseBuildingInstance buildingToMove)",
+    "Void SetPileToInstall(MovableBuildingPileInstance pileToInstall)",
+    "Void LoadingSetup()",
+    "Void BuildingDeconstructed(BaseBuildingInstance deconstructedBuilding)",
+    "Void MoveCanceledFromSource(BaseBuildingInstance sourceBuilding)",
+    "Void BlueprintCanceled(BaseBuildingInstance canceledBuilding)",
+    "Void SourceBuildingDestroyed(BaseBuildingInstance sourceBuilding)"
+   ],
+   "properties": [
+    "Int32 Count ro",
+    "BaseBuildingInstance BuildingToMove ro",
+    "MovableBuildingPileInstance PileToInstall ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Goap.ConstructionJobManager",
+   "base": "Object",
+   "methods": [
+    "Void add_MarkedForDeconstructionEvent(Action`1 value)",
+    "Void remove_MarkedForDeconstructionEvent(Action`1 value)",
+    "Void add_UnMarkedForDeconstructionEvent(Action`1 value)",
+    "Void remove_UnMarkedForDeconstructionEvent(Action`1 value)",
+    "Boolean get_HasCreateVoxelJobs()",
+    "Boolean get_HasDeconstructJobs()",
+    "Boolean get_HasDigJobs()",
+    "CreateVoxelJobManager get_CreateVoxelManager()",
+    "DestroyVoxelJobManager get_DestroyVoxelManager()",
+    "DeliveryJobManager get_DeliveryJobManager()",
+    "Void Dispose()",
+    "Boolean HasDoableDeliveryJobs()",
+    "Void CreateDeliverResourceJob(BaseBuildingInstance building)",
+    "Void RemoveDeliverResourceJob(BaseBuildingInstance building)",
+    "Boolean TryReserveDeliverResourceJobs(HumanoidInstance agent, PooledList`1& outJobs, SimpleResourceCount& agentResourceOrder, Int32& sameBlueprintNeighbourhoodCount)",
+    "Void CreateConstructBuildingJob(BaseBuildingInstance building)",
+    "Void RemoveConstructBuildingJob(BaseBuildingInstance building)",
+    "Boolean TryReserveConstructBuildingJob(HumanoidInstance agent, PooledList`1& outJobBuildings, Boolean& allJobsAreBlocking)",
+    "Void CreateDigJobs(DigMarkerResourceInstance newDigMarker)",
+    "Void RemoveDigJobs(DigMarkerResourceInstance digMarker)",
+    "Boolean TryReserveDigJob(CreatureBase agent, PooledList`1& outJobs, Boolean& allJobsWouldEncloseRegion)",
+    "Void CreateDeconstructJob(BaseBuildingInstance building)",
+    "Void RemoveDeconstructJobs(BaseBuildingInstance building)",
+    "Boolean TryReserveDeconstructJob(HumanoidInstance humanoidOwner, PooledList`1& outJobs, Boolean& allJobsWouldEncloseRegion)",
+    "Boolean WouldJobEncloseRegion(BaseBuildingInstance jobBuilding, Boolean reCalculateFloodFill)",
+    "Boolean WouldDestroyJobEncloseRegion(MapNode node, Boolean reCalculateFloodFill)",
+    "Void RemoveAllJobs(BaseBuildingInstance building)",
+    "Void OnLateTick()",
+    "Boolean IsDeconstructJobEnclosed(BaseBuildingInstance building)",
+    "Boolean IsDigJobEnclosed(DigMarkerResourceInstance digMarker)",
+    "Void WriteSaveData(SaveData saveData)",
+    "Void LoadSavedData(SaveData saveData)"
+   ],
+   "properties": [
+    "Boolean HasCreateVoxelJobs ro",
+    "Boolean HasDeconstructJobs ro",
+    "Boolean HasDigJobs ro",
+    "CreateVoxelJobManager CreateVoxelManager ro",
+    "DestroyVoxelJobManager DestroyVoxelManager ro",
+    "DeliveryJobManager DeliveryJobManager ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Goap.ConstructionJobManagerMigration",
+   "base": "Object",
+   "methods": [
+    "static Dictionary`2 GeneratePriorities(List`1 jobNodes)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Goap.ConstructionJobManagerUtil",
+   "base": "Object",
+   "methods": [
+    "static Boolean WouldJobBlockRegion(VillageMap map, MapNode jobNode, WorldDirection& avoidReachableDirections, Boolean& errorHappened, Boolean wouldRemoveNode)",
+    "static Boolean TryFindEstimatedClosestReachablePosition(IPathfindingAgent agent, WorldObject target, WorldDirection avoidReachableDirections, Vec3Int& agentGridPosition, Vec3Int& reachablePosition, Single& closestPathLength)",
+    "static Boolean TryFindGoodReachablePosition(IPathfindingAgent agent, WorldObject targetObject, Boolean isRemove, Vec3Int& reachablePosition)",
+    "static Boolean IsInBlockedRegion(MapNode startNode)",
+    "static Int32 GetSpatialPriority(Vec3Int& position)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Goap.PathfinderResourcePile",
+   "base": "Object",
+   "methods": [
+    "static List`1 FindPiles(IPathfindingAgent agent, Func`2 condition)",
+    "static List`1 FindCategoryPiles(IPathfindingAgent agent, ResourceCategory category, Func`2 filter, Boolean includeForbiden)",
+    "static List`1 FindHumanCarcasses(IPathfindingAgent agent, Func`2 condition)",
+    "static List`1 FindHumanCarcassesForStripping(IPathfindingAgent agent, Func`2 condition)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Goap.Goals.StockpileHaulingGoal",
+   "base": "HaulingBaseGoal",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Goap.Goals.StockpileUrgentHaulingGoal",
+   "base": "StockpileHaulingGoal",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.GameEventSystem.RaiderBlueprintId",
+   "base": "Object",
+   "methods": [
+    "RaiderType get_Type()",
+    "String get_Id()",
+    "Nullable`1 get_RandomSeed()",
+    "Void set_RandomSeed(Nullable`1 value)",
+    "IEnemyPurchaseUnit FindBlueprint()",
+    "Void Serialize(FVSerializer serializer)"
+   ],
+   "properties": [
+    "RaiderType Type ro",
+    "String Id ro",
+    "Nullable`1 RandomSeed rw"
+   ]
+  },
+  {
+   "type": "NSMedieval.Factions.VillagePlacement",
+   "base": "Object",
+   "methods": [
+    "Int32 get_FactionCount()",
+    "String get_FactionType()",
+    "Int32 get_VillagesCountPerFaction()"
+   ],
+   "properties": [
+    "Int32 FactionCount ro",
+    "String FactionType ro",
+    "Int32 VillagesCountPerFaction ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.DevConsole.CommandAllowEdgePlacement",
+   "base": "ConsoleCommand",
+   "methods": [
+    "String get_Command()",
+    "String get_Description()",
+    "String get_Help()",
+    "String get_Argument()"
+   ],
+   "properties": [
+    "String Command rw",
+    "String Description rw",
+    "String Help rw",
+    "String Argument rw"
+   ]
+  },
+  {
+   "type": "NSMedieval.DevConsole.CommandConstructionSpeedMax",
+   "base": "ConsoleCommand",
+   "methods": [
+    "String get_Command()",
+    "String get_Description()",
+    "String get_Help()",
+    "String get_Argument()"
+   ],
+   "properties": [
+    "String Command rw",
+    "String Description rw",
+    "String Help rw",
+    "String Argument rw"
+   ]
+  },
+  {
+   "type": "NSMedieval.DevConsole.CommandFinishAllBlueprints",
+   "base": "ConsoleCommand",
+   "methods": [
+    "String get_Command()",
+    "String get_Description()",
+    "String get_Help()"
+   ],
+   "properties": [
+    "String Command rw",
+    "String Description rw",
+    "String Help rw"
+   ]
+  },
+  {
+   "type": "NSMedieval.DevConsole.CommandRemoveResourcePile",
+   "base": "ConsoleCommand",
+   "methods": [
+    "String get_Command()",
+    "String get_Description()",
+    "String get_Help()"
+   ],
+   "properties": [
+    "String Command rw",
+    "String Description rw",
+    "String Help rw"
+   ]
+  },
+  {
+   "type": "NSMedieval.DevConsole.CommandSpawnRandomResourcePiles",
+   "base": "ConsoleCommand",
+   "methods": [
+    "String get_Command()",
+    "String get_Description()",
+    "String get_Help()"
+   ],
+   "properties": [
+    "String Command rw",
+    "String Description rw",
+    "String Help rw"
+   ]
+  },
+  {
+   "type": "NSMedieval.DevConsole.CommandSpawnResourcePile",
+   "base": "ConsoleCommand",
+   "methods": [
+    "String get_Command()",
+    "String get_Description()",
+    "String get_Help()"
+   ],
+   "properties": [
+    "String Command rw",
+    "String Description rw",
+    "String Help rw"
+   ]
+  },
+  {
+   "type": "NSMedieval.Resources.ResourcePileController",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "Void add_PreSpawnPileEvent(Action`1 value)",
+    "Void remove_PreSpawnPileEvent(Action`1 value)",
+    "Void add_SpawnPileEvent(Action`1 value)",
+    "Void remove_SpawnPileEvent(Action`1 value)",
+    "Void add_DestroyPileEvent(Action`1 value)",
+    "Void remove_DestroyPileEvent(Action`1 value)",
+    "Void add_AllSavedPilesSpawnedEvent(Action value)",
+    "Void remove_AllSavedPilesSpawnedEvent(Action value)",
+    "Void add_ResourceCountChangeEvent(Action`2 value)",
+    "Void remove_ResourceCountChangeEvent(Action`2 value)",
+    "Void add_EquipOrderUpdateEvent(Action`3 value)",
+    "Void remove_EquipOrderUpdateEvent(Action`3 value)",
+    "Void add_ResourcePileSelectedEvent(Action`1 value)",
+    "Void remove_ResourcePileSelectedEvent(Action`1 value)",
+    "Void add_AllPilesCountEvent(Action value)",
+    "Void remove_AllPilesCountEvent(Action value)",
+    "Void add_PileRottenEvent(Action`1 value)",
+    "Void remove_PileRottenEvent(Action`1 value)",
+    "Void OnPileRotten(ResourcePileInstance pileInstance)",
+    "Void EquipOrderUpdate(ResourcePileInstance pile, HumanoidInstance humanoid, Boolean active)",
+    "Void OnPileSelected(ResourcePileInstance pileInstance)",
+    "Void add_InstallBuildingCanceledEvent(Action`1 value)",
+    "Void remove_InstallBuildingCanceledEvent(Action`1 value)",
+    "Void InstallBuildingCancelled(BaseBuildingInstance buildingInstance)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Construction.ConstructionController",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "Void add_ChangeBuildingTypeToPlaceEvent(Action value)",
+    "Void remove_ChangeBuildingTypeToPlaceEvent(Action value)",
+    "Void add_BlueprintPlacedEvent(Action`1 value)",
+    "Void remove_BlueprintPlacedEvent(Action`1 value)",
+    "Void add_BlueprintPlacedCarveAreasEvent(Action`1 value)",
+    "Void remove_BlueprintPlacedCarveAreasEvent(Action`1 value)",
+    "Void add_ConstructionMaterialsDeliveredEvent(Action`1 value)",
+    "Void remove_ConstructionMaterialsDeliveredEvent(Action`1 value)",
+    "Void add_ShowFoundationEvent(Action`1 value)",
+    "Void remove_ShowFoundationEvent(Action`1 value)",
+    "Void add_ConstructionCompletedEvent(Action`1 value)",
+    "Void remove_ConstructionCompletedEvent(Action`1 value)",
+    "Void add_BuildingMovePlacedEvent(Action`1 value)",
+    "Void remove_BuildingMovePlacedEvent(Action`1 value)",
+    "Void add_InstallBuildingPlacedEvent(Action`1 value)",
+    "Void remove_InstallBuildingPlacedEvent(Action`1 value)",
+    "Void add_CancelPileInstallationEvent(Action`1 value)",
+    "Void remove_CancelPileInstallationEvent(Action`1 value)",
+    "Void add_BuildingUninstalledEvent(Action`3 value)",
+    "Void remove_BuildingUninstalledEvent(Action`3 value)",
+    "Void add_RefreshLadderFloorEvent(Action`1 value)",
+    "Void remove_RefreshLadderFloorEvent(Action`1 value)",
+    "Void add_LadderConstructedEvent(Action`1 value)",
+    "Void remove_LadderConstructedEvent(Action`1 value)",
+    "Void add_LockStateChangedEvent(Action`1 value)",
+    "Void remove_LockStateChangedEvent(Action`1 value)",
+    "Void add_ObjectDestroyedCheckFallDownEvent(Action`1 value)",
+    "Void remove_ObjectDestroyedCheckFallDownEvent(Action`1 value)",
+    "Void add_RefreshUsableWellsEvent(Action`1 value)",
+    "Void remove_RefreshUsableWellsEvent(Action`1 value)",
+    "Void add_RoofConstructedEvent(Action`1 value)",
+    "Void remove_RoofConstructedEvent(Action`1 value)",
+    "Void add_RoofDestroyedEvent(Action`1 value)",
+    "Void remove_RoofDestroyedEvent(Action`1 value)",
+    "Void add_BlobConstructionCompletedEvent(Action`1 value)",
+    "Void remove_BlobConstructionCompletedEvent(Action`1 value)",
+    "Void add_OnDoorLockStateChangedEvent(Action`1 value)",
+    "Void remove_OnDoorLockStateChangedEvent(Action`1 value)",
+    "Void add_DoorLockOrderChangedEvent(Action`1 value)",
+    "Void remove_DoorLockOrderChangedEvent(Action`1 value)",
+    "Void add_ShelfOrderChangedEvent(Action`1 value)",
+    "Void remove_ShelfOrderChangedEvent(Action`1 value)",
+    "Void add_WindowLockOrderChangedEvent(Action`1 value)",
+    "Void remove_WindowLockOrderChangedEvent(Action`1 value)",
+    "Void add_FuelConsumerStateChangedEvent(Action`1 value)",
+    "Void remove_FuelConsumerStateChangedEvent(Action`1 value)",
+    "Void add_FactionOwnershipChangedEvent(Action`3 value)",
+    "Void remove_FactionOwnershipChangedEvent(Action`3 value)",
+    "Void add_ObjectDestroyedOnPassThroughEvent(Action`1 value)",
+    "Void remove_ObjectDestroyedOnPassThroughEvent(Action`1 value)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Construction.ConstructionController+<BuildingDestroyedRefreshBlueprintReachability>d__104",
+   "base": "Object",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Construction.ConstructionPhase",
+   "base": "Enum",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Construction.PlacementType",
+   "base": "Enum",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Construction.ConstructionParameters",
+   "base": "Object",
+   "methods": [
+    "Single get_ConstructionDuration()",
+    "AttributeType get_DurationStat()",
+    "AttributeType get_FailStat()",
+    "SkillType get_RewardedSkill()",
+    "Single get_RewardAmount()",
+    "String get_ToolId()"
+   ],
+   "properties": [
+    "Single ConstructionDuration ro",
+    "AttributeType DurationStat ro",
+    "AttributeType FailStat ro",
+    "SkillType RewardedSkill ro",
+    "Single RewardAmount ro",
+    "String ToolId ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.BeamComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "Int32 get_MaxLength()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "Int32 MaxLength ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.BedComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BedType get_BedType()",
+    "BuildingType get_ComponentType()",
+    "List`1 get_WorkerEffectors()",
+    "TransformSettings get_SleepPosition()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BedType BedType ro",
+    "BuildingType ComponentType ro",
+    "List`1 WorkerEffectors ro",
+    "TransformSettings SleepPosition ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.BellComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "String GetID()"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.BaseBuildingBlueprint",
+   "base": "Model",
+   "methods": [
+    "OcclusionCullingMode get_OcclusionCullingMode()",
+    "Void set_OcclusionCullingMode(OcclusionCullingMode value)",
+    "ForbiddenAreaInfo get_ForbiddenAreaInfo()",
+    "String get_BeamComponentID()",
+    "String get_BedComponentID()",
+    "String get_CaravanPostComponentID()",
+    "String get_ChairComponentID()",
+    "String get_DecorationComponentID()",
+    "String get_DoorComponentID()",
+    "String get_GateComponentID()",
+    "String get_EntertainmentComponentID()",
+    "String get_FuelConsumerComponentID()",
+    "String get_GraveComponentID()",
+    "String get_LadderComponentID()",
+    "String get_MapTableComponentID()",
+    "String get_PenMarkerComponentID()",
+    "String get_RallyPointMarkerComponentID()",
+    "String get_ProductionComponentID()",
+    "String get_RoofComponentID()",
+    "String get_RugComponentID()",
+    "String get_ShelfComponentID()",
+    "String get_ShrineComponentID()",
+    "String get_SignComponentID()",
+    "String get_StairComponentID()",
+    "String get_TableComponentID()",
+    "String get_TradingPostComponentID()",
+    "String get_GallowsComponentID()",
+    "String get_TrapComponentID()",
+    "String get_WindowComponentID()",
+    "String get_VoxelComponentID()",
+    "String get_BuildAnimationTrigger()",
+    "String get_BuildItem()",
+    "String get_SlopeComponentID()",
+    "String get_WellComponentID()",
+    "String get_OilBlobComponentID()",
+    "String get_SiegeWeaponComponentID()",
+    "String get_BellComponentID()",
+    "Single get_SpawnFireOnDestroy()",
+    "Boolean get_IsVerticalFireBlocker()",
+    "Boolean get_CanHaveOwner()",
+    "String get_VoxelTypeID()",
+    "Single get_Cover()",
+    "Single get_CoverClosed()",
+    "Single get_CoverIgnore()",
+    "Boolean get_HasDestructionAnimation()",
+    "Int32 get_BuildTime()",
+    "Single get_InstallationMultiplier()",
+    "Int32 get_MinBuildSkillRequired()",
+    "Single get_AttackTraversePenalty()",
+    "Vec3Int get_Size()"
+   ],
+   "properties": [
+    "OcclusionCullingMode OcclusionCullingMode rw",
+    "ForbiddenAreaInfo ForbiddenAreaInfo ro",
+    "String BeamComponentID ro",
+    "String BedComponentID ro",
+    "String CaravanPostComponentID ro",
+    "String ChairComponentID ro",
+    "String DecorationComponentID ro",
+    "String DoorComponentID ro",
+    "String GateComponentID ro",
+    "String EntertainmentComponentID ro",
+    "String FuelConsumerComponentID ro",
+    "String GraveComponentID ro",
+    "String LadderComponentID ro",
+    "String MapTableComponentID ro",
+    "String PenMarkerComponentID ro",
+    "String RallyPointMarkerComponentID ro",
+    "String ProductionComponentID ro",
+    "String RoofComponentID ro",
+    "String RugComponentID ro",
+    "String ShelfComponentID ro",
+    "String ShrineComponentID ro",
+    "String SignComponentID ro",
+    "String StairComponentID ro",
+    "String TableComponentID ro",
+    "String TradingPostComponentID ro",
+    "String GallowsComponentID ro",
+    "String TrapComponentID ro",
+    "String WindowComponentID ro",
+    "String VoxelComponentID ro",
+    "String BuildAnimationTrigger ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.CaravanPostComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.ChairComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "List`1 get_WorkerEffectors()",
+    "TransformSettings get_SittingPosition()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "List`1 WorkerEffectors ro",
+    "TransformSettings SittingPosition ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.DecorationComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "Boolean get_GenerateQualityVersions()",
+    "String GetID()",
+    "Void SetInfo(ProductQuality quality)",
+    "DecorationComponentBlueprint GetQualityClone(ProductQuality quality)"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "Boolean GenerateQualityVersions ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.DoorComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "List`1 get_LockStates()",
+    "UInt16 get_PathfindingPenaltyAlwaysOpen()",
+    "Single get_WalkSpeedMultiplierAlwaysOpen()",
+    "Single get_CoverOpen()",
+    "DoorType get_DoorType()",
+    "Single get_OpeningSpeedMultiplier()",
+    "Single get_ClosingSpeedMultiplier()",
+    "Boolean get_CanChangeDirection()",
+    "BoxColliderSettings get_BoxColliderSettings()",
+    "Single get_EnemyDamage()",
+    "Single get_WorkerDamage()",
+    "Single get_AnimalDamage()",
+    "Single get_PileDamage()",
+    "Single get_FloraDamage()",
+    "Single get_IgnoresArmor()",
+    "Single get_ArmorDamage()",
+    "Single get_ChanceToHurt()",
+    "Single get_CriticalChance()",
+    "LockState get_DefaultLockState()",
+    "ThermalModel get_ThermalModel()",
+    "Boolean get_CountsAsDoorInRaid()",
+    "Boolean get_DealDamageWhenClosing()",
+    "Boolean get_DrawBridge()",
+    "HitEffector[] get_OnHitEffectors()",
+    "HitEffector[] get_OnCriticalHitEffectors()",
+    "String get_OpenAudioEventId()",
+    "String get_CloseAudioEventId()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "List`1 LockStates ro",
+    "UInt16 PathfindingPenaltyAlwaysOpen ro",
+    "Single WalkSpeedMultiplierAlwaysOpen ro",
+    "Single CoverOpen ro",
+    "DoorType DoorType ro",
+    "Single OpeningSpeedMultiplier ro",
+    "Single ClosingSpeedMultiplier ro",
+    "Boolean CanChangeDirection ro",
+    "BoxColliderSettings BoxColliderSettings ro",
+    "Single EnemyDamage ro",
+    "Single WorkerDamage ro",
+    "Single AnimalDamage ro",
+    "Single PileDamage ro",
+    "Single FloraDamage ro",
+    "Single IgnoresArmor ro",
+    "Single ArmorDamage ro",
+    "Single ChanceToHurt ro",
+    "Single CriticalChance ro",
+    "LockState DefaultLockState ro",
+    "ThermalModel ThermalModel ro",
+    "Boolean CountsAsDoorInRaid ro",
+    "Boolean DealDamageWhenClosing ro",
+    "Boolean DrawBridge ro",
+    "HitEffector[] OnHitEffectors ro",
+    "HitEffector[] OnCriticalHitEffectors ro",
+    "String OpenAudioEventId ro",
+    "String CloseAudioEventId ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.EntertainmentComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "String get_InteractAnimation()",
+    "Int32 get_InteractAnimationVariationsCount()",
+    "String get_InteractTool()",
+    "String get_ToolSocket()",
+    "List`1 get_WorkerEffectors()",
+    "StringKeyPair get_StatAffect()",
+    "String get_UseGoal()",
+    "SkillType get_AddXpToSkill()",
+    "Int32 get_AddXpAmount()",
+    "TransformSettings get_SittingPosition()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "String InteractAnimation ro",
+    "Int32 InteractAnimationVariationsCount ro",
+    "String InteractTool ro",
+    "String ToolSocket ro",
+    "List`1 WorkerEffectors ro",
+    "StringKeyPair StatAffect ro",
+    "String UseGoal ro",
+    "SkillType AddXpToSkill ro",
+    "Int32 AddXpAmount ro",
+    "TransformSettings SittingPosition ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.PlacementCheck",
+   "base": "Enum",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.FuelConsumerComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "String get_TextKeyOn()",
+    "String get_TextKeyOff()",
+    "String get_InfoTextKeyOn()",
+    "String get_InfoTextKeyOff()",
+    "BuildingType get_ComponentType()",
+    "ResourceCategory get_FuelType()",
+    "StorageBase get_FuelStorage()",
+    "Single get_BurnRate()",
+    "Single get_RequiredCalories()",
+    "Single get_RefillFactor()",
+    "ThermalModelIntensity get_StartingThermalModel()",
+    "Dictionary`2 get_CachedThermalModels()",
+    "String get_LightCookieId()",
+    "String get_PrefabId()",
+    "TransformSettings get_PrefabTransformSettings()",
+    "String GetID()"
+   ],
+   "properties": [
+    "String TextKeyOn ro",
+    "String TextKeyOff ro",
+    "String InfoTextKeyOn ro",
+    "String InfoTextKeyOff ro",
+    "BuildingType ComponentType ro",
+    "ResourceCategory FuelType ro",
+    "StorageBase FuelStorage ro",
+    "Single BurnRate ro",
+    "Single RequiredCalories ro",
+    "Single RefillFactor ro",
+    "ThermalModelIntensity StartingThermalModel ro",
+    "Dictionary`2 CachedThermalModels ro",
+    "String LightCookieId ro",
+    "String PrefabId ro",
+    "TransformSettings PrefabTransformSettings ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.GallowsComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.GraveComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "Boolean get_Diggable()",
+    "List`1 get_ValidGround()",
+    "StorageBase get_GraveStorage()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "Boolean Diggable ro",
+    "List`1 ValidGround ro",
+    "StorageBase GraveStorage ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.LadderComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.BuildingPlacementManager",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "Void add_SelectionCanceledEvent(Action value)",
+    "Void remove_SelectionCanceledEvent(Action value)",
+    "Void add_EmptyClickEvent(Action value)",
+    "Void remove_EmptyClickEvent(Action value)",
+    "Void add_CraftableBuildingsToggledEvent(Action value)",
+    "Void remove_CraftableBuildingsToggledEvent(Action value)",
+    "Void add_StabilityBuildingRemovedEvent(Action value)",
+    "Void remove_StabilityBuildingRemovedEvent(Action value)",
+    "Dictionary`2 get_ShadowCastingModes()",
+    "Boolean get_ConstructWithoutResource()",
+    "Void set_ConstructWithoutResource(Boolean value)",
+    "Boolean get_HasSelectedItem()",
+    "Boolean get_MouseDown()",
+    "Boolean get_CraftableBuildingsEnabled()",
+    "Void set_CraftableBuildingsEnabled(Boolean value)",
+    "Void CraftableBuildingsEnabledToggle()",
+    "Void SpawnMaterialsWithBuildingToggle()",
+    "Boolean get_SpawnMaterialsWithBuilding()",
+    "Void set_SpawnMaterialsWithBuilding(Boolean value)",
+    "Void VariantsUnlockedToggle()",
+    "Boolean get_VariantsUnlocked()",
+    "Void set_VariantsUnlocked(Boolean value)",
+    "Void AutoconstructToggle()",
+    "Boolean get_Autoconstruct()",
+    "Void set_Autoconstruct(Boolean value)",
+    "Boolean get_UserForceMerlonRotation()",
+    "Void SetupCamera()",
+    "RelocateBuilding get_MoveBuilding()",
+    "Void CachePileToInstall(MovableBuildingPileInstance pileToInstall)",
+    "Void ClearPileToInstall()",
+    "Void Setup(Vector3 scale, Vector3 position)",
+    "Void EmptyClick()",
+    "Void MouseEventDown(Int32 button, Vector3 position)",
+    "Void OnRightMouseUp()",
+    "Void SetMoveOrInstallPlacedSuccess(Boolean moveOrInstallPlacedSuccess)",
+    "Void OnLeftMouseUp()",
+    "Void InitializeBuilding(String id, RelocateBuilding moveBuilding)",
+    "Void CancelSelection(Boolean resetCancelPlacement)",
+    "Void OnLeftMouseDrag()",
+    "BaseBuildingViewComponent SpawnBaseBuildingViewComponent(BaseBuildingBlueprint blueprint, Vec3Int gridPosition, Int32 angleY)",
+    "Boolean BeamExists(Vec3Int gridPosition, Boolean onlyFinished)",
+    "static Int32 CalculateBeamScaleX(Vec3Int startWall, Vec3Int endWall, IBeamView objectToScale)",
+    "static Int32 CalculateBeamScaleZ(Vec3Int startWall, Vec3Int endWall, IBeamView objectToScale)",
+    "BeamComponentInstance SpawnBeamAxisX(BaseBuildingBlueprint beamToSpawn, Object start, Object end)",
+    "BeamComponentInstance SpawnBeamAxisZ(BaseBuildingBlueprint beamToSpawn, Object start, Object end)",
+    "Void SpawnBlueprint(BaseBuildingBlueprint blueprint, Vec3Int gridPos, Int32 angle, RelocateBuilding moveBuilding)",
+    "Void SpawnRoofAutoTesting(BaseBuildingBlueprint blueprint, Vec3Int gridPos, Int32 angle, Vec3Int scale, List`1 positions)",
+    "BaseBuildingInstance SpawnEnemyBuilding(String blueprintId, Vec3Int gridPos, Int32 yAngle)"
+   ],
+   "properties": [
+    "Dictionary`2 ShadowCastingModes ro",
+    "Boolean ConstructWithoutResource rw",
+    "Boolean HasSelectedItem ro",
+    "Boolean MouseDown ro",
+    "Boolean CraftableBuildingsEnabled rw",
+    "Boolean SpawnMaterialsWithBuilding rw",
+    "Boolean VariantsUnlocked rw",
+    "Boolean Autoconstruct rw",
+    "Boolean UserForceMerlonRotation ro",
+    "RelocateBuilding MoveBuilding ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.BuildingPlacementManager+<ShowRoofPlacementError>d__196",
+   "base": "Object",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.BuildingsManagerMain",
+   "base": "Object",
+   "methods": [
+    "Single get_TotalBuildingWealth()",
+    "Void add_LoadSavedBuildingEvent(Action`1 value)",
+    "Void remove_LoadSavedBuildingEvent(Action`1 value)",
+    "Void add_BuildingDestroyedEvent(Action`1 value)",
+    "Void remove_BuildingDestroyedEvent(Action`1 value)",
+    "Void add_BeforeBuildingDestroyedEvent(Action`1 value)",
+    "Void remove_BeforeBuildingDestroyedEvent(Action`1 value)",
+    "Void add_StabilityCarrierDestroyedEvent(Action`2 value)",
+    "Void remove_StabilityCarrierDestroyedEvent(Action`2 value)",
+    "Dictionary`2 get_UniqueIdBuildingDictionary()",
+    "BaseBuildingInstance get_LastPlacedBuilding()",
+    "HashSet`1 get_PlayerTriggeredEventHolders()",
+    "BaseBuildingInstance get_BuildingToCopy()",
+    "Dictionary`2 get_TypePositionInstanceDictionary()",
+    "Dictionary`2 get_TypeInstanceView()",
+    "Dictionary`2 get_PositionInstanceListDictionary()",
+    "T GetComponentInstance(BaseBuildingInstance baseBuildingInstance)",
+    "Int32 GetBuildingsCount(String id)",
+    "Void SetBuildingToCopy(BaseBuildingInstance buildingToCopy)",
+    "Void GetBasicBuildingsNonAlloc(Vec3Int position, IList`1 list)",
+    "BaseBuildingViewComponent GetView(BaseBuildingInstance buildingInstance)",
+    "BaseBuildingInstance GetByTypeAndPosition(BuildingType buildingType, Vec3Int gridPosition, Func`2 condition)",
+    "Void Dispose()",
+    "Void CreateBuildingInstanceAndBindToView(BaseBuildingBlueprint baseBuildingBlueprint, BaseBuildingViewComponent baseBuildingViewComponent, Vector3 worldPos, Int32 angleY)",
+    "BaseBuildingInstance CreateAndReturnBuildingInstance(BaseBuildingBlueprint baseBuildingBlueprint, BaseBuildingViewComponent baseBuildingViewComponent, Vector3 worldPos, Int32 angleY, FactionOwnership factionOwnership)",
+    "Void CacheBuildingInstance(BaseBuildingViewComponent baseBuildingViewComponent, Boolean afterLoading)",
+    "Void CacheBuildingCopySettings(BaseBuildingInstance newBuilding)",
+    "Void ShowMessageBlockedByBuilding(BaseBuildingInstance blockerBuilding)",
+    "Void ShowMessageBlockedBySlope()",
+    "Boolean CanPlaceRoof(RoofViewComponent roofViewComponent, Boolean showMessage)",
+    "Boolean CanPlaceEnemyBuilding(BaseBuildingBlueprint blueprint, Vec3Int gridPosition, Int32 angle)",
+    "Boolean CanPlace(BaseBuildingBlueprint blueprint, Vec3Int gridPosition, Int32 angle, Boolean silentLogs)",
+    "Boolean IsBlueprintInAreaForbiddenByBuildings(BaseBuildingBlueprint blueprint, Vec3Int v)",
+    "BaseBuildingInstance GetForbiddenAreaOwner(Vec3Int gridPos)",
+    "BaseBuildingInstance FindWouldReplaceBuilding(BaseBuildingInstance newBuilding)",
+    "Void TryReplaceBuilding(BaseBuildingInstance newBuilding)",
+    "List`1 GetBuildings(Vec3Int gridPosition)",
+    "PooledList`1 GetBuildings(Vec3Int gridPosition, Func`2 condition)",
+    "Void GetAllBuildings(Queue`1 output)",
+    "Void GetAllBuildings(List`1 output)",
+    "Void GetBuildings(BuildingType buildingType, List`1 output)",
+    "PooledList`1 GetBuildings(BuildingType buildingType)",
+    "PooledList`1 GetBuildingViews(BuildingType buildingType)",
+    "IEnumerable`1 IterateBuildingViews()",
+    "BaseBuildingInstance GetBuilding(Vec3Int gridPos, Func`2 condition)",
+    "BaseBuildingInstance TryGetBasicBuilding(Vec3Int gridPosition, Func`2 condition)",
+    "Boolean CollidesWithProjectile(Vector3 point, BaseBuildingInstance sourceBuilding)",
+    "Boolean BuildingExists(BuildingType checkFor, Vec3Int gridPosition, Func`2 condition)",
+    "Boolean BuildingExists(Vec3Int gridPosition, Func`2 condition)",
+    "Boolean SocketableBlockerExists(Vec3Int gridPosition)"
+   ],
+   "properties": [
+    "Single TotalBuildingWealth rw",
+    "Dictionary`2 UniqueIdBuildingDictionary ro",
+    "BaseBuildingInstance LastPlacedBuilding rw",
+    "HashSet`1 PlayerTriggeredEventHolders ro",
+    "BaseBuildingInstance BuildingToCopy ro",
+    "Dictionary`2 TypePositionInstanceDictionary ro",
+    "Dictionary`2 TypeInstanceView ro",
+    "Dictionary`2 PositionInstanceListDictionary ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.EnemyBuildingsManager",
+   "base": "Object",
+   "methods": [
+    "ConcurrentDictionary`2 get_Buildings()",
+    "Void Dispose()",
+    "BaseBuildingInstance SelectRandomSiegeWeapon()",
+    "Void ConvertEnemyBuildingsToPlayerBuildings()",
+    "PlantMapResourceInstance GetPlantToChop(Vec3Int pos)",
+    "BaseBuildingInstance GetBuilding(Vec3Int gridPos)",
+    "Void CacheEnemyBuilding(BaseBuildingInstance building)",
+    "Void RemoveEnemyBuilding(BaseBuildingInstance building)",
+    "Void CachePlantToChop(PlantMapResourceInstance plantToChop)",
+    "Void RemovePlantToChop(PlantMapResourceInstance plantToChop)"
+   ],
+   "properties": [
+    "ConcurrentDictionary`2 Buildings ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.MapTableComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.OilBlobComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "OilBlobType get_OilBlobType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "OilBlobType OilBlobType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.PenMarkerComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.ProductionComponentBuildingManager",
+   "base": "ComponentBaseManager`2",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.ProductionComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "List`1 get_Productions()",
+    "ProductionSpeedMultiplier get_ProductionSpeedMultiplier()",
+    "ProductionSpeedMultiplierSkep get_ProductionSpeedMultiplierSkep()",
+    "String get_InteractTool()",
+    "String get_ToolSocket()",
+    "String get_InteractAnimation()",
+    "Boolean get_CanProtectAgainstPredatorsWhileActive()",
+    "ThermalModel get_ThermalModel()",
+    "TransformSettings get_ProductionMarkerOffset()",
+    "String get_ProductionEffectPrefabId()",
+    "String get_ProductionSound()",
+    "TransformSettings get_EffectTransformSettings()",
+    "String GetID()",
+    "Single GetSpeedMultiplierForTemperature(Single temperature, Season season)"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "List`1 Productions ro",
+    "ProductionSpeedMultiplier ProductionSpeedMultiplier ro",
+    "ProductionSpeedMultiplierSkep ProductionSpeedMultiplierSkep ro",
+    "String InteractTool ro",
+    "String ToolSocket ro",
+    "String InteractAnimation ro",
+    "Boolean CanProtectAgainstPredatorsWhileActive ro",
+    "ThermalModel ThermalModel ro",
+    "TransformSettings ProductionMarkerOffset ro",
+    "String ProductionEffectPrefabId ro",
+    "String ProductionSound ro",
+    "TransformSettings EffectTransformSettings ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.RallyPointMarkerComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "String GetID()"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.RoofComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "Int32 get_MaxLength()",
+    "Boolean get_HalfRoof()",
+    "Int32 GetHeight(Int32 currentLength)",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "Int32 MaxLength ro",
+    "Boolean HalfRoof ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.RugComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "List`1 get_WorkerEffectors()",
+    "String GetID()",
+    "Void SetInfo(ProductQuality quality, List`1 workerEffectors)",
+    "RugComponentBlueprint GetQualityClone(ProductQuality quality, List`1 workerEffectors)"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "List`1 WorkerEffectors ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.ShelfComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "List`1 get_StorageIDs()",
+    "Boolean get_AnimalFeeder()",
+    "Boolean get_PrisonFeeder()",
+    "Boolean get_Barrel()",
+    "List`1 get_LockStates()",
+    "Boolean get_HideBeautyContent()",
+    "LockState get_DefaultLockState()",
+    "ShelfSize get_ShelfSize()",
+    "Boolean get_Rainproof()",
+    "Boolean HasShelfTransformSettings(Int32 index, ShelfTransformSettings& settings)",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "List`1 StorageIDs ro",
+    "Boolean AnimalFeeder ro",
+    "Boolean PrisonFeeder ro",
+    "Boolean Barrel ro",
+    "List`1 LockStates ro",
+    "Boolean HideBeautyContent ro",
+    "LockState DefaultLockState ro",
+    "ShelfSize ShelfSize ro",
+    "Boolean Rainproof ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.ShrineComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.SiegeWeaponComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "Single get_ProjectileSpeed()",
+    "Single get_MaxRangeRadius()",
+    "Single get_MinRangeRadius()",
+    "SiegeWeaponType get_SiegeWeaponType()",
+    "Single get_ProjectileHitRadius()",
+    "IntFloatDictionary get_RangePerLayer()",
+    "Single get_AttackAnimationSpeed()",
+    "Single get_TargetRandomRadius()",
+    "Single get_ReloadAnimationSpeed()",
+    "BuildingType get_ComponentType()",
+    "List`1 get_StorableResourceGroups()",
+    "List`1 get_AllowedByDefault()",
+    "List`1 get_ResourceGroups()",
+    "String get_WindUpAudioEvent()",
+    "String get_ReleaseAudioEvent()",
+    "Boolean IsTrader()",
+    "Int32 GetPrice()",
+    "Single GetPriceThreshold()",
+    "String GetID()"
+   ],
+   "properties": [
+    "Single ProjectileSpeed ro",
+    "Single MaxRangeRadius ro",
+    "Single MinRangeRadius ro",
+    "SiegeWeaponType SiegeWeaponType ro",
+    "Single ProjectileHitRadius ro",
+    "IntFloatDictionary RangePerLayer ro",
+    "Single AttackAnimationSpeed ro",
+    "Single TargetRandomRadius ro",
+    "Single ReloadAnimationSpeed ro",
+    "BuildingType ComponentType ro",
+    "List`1 StorableResourceGroups ro",
+    "List`1 AllowedByDefault ro",
+    "List`1 ResourceGroups ro",
+    "String WindUpAudioEvent ro",
+    "String ReleaseAudioEvent ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.SiegeWeaponProjectileBlueprint",
+   "base": "Model",
+   "methods": [
+    "String get_PrefabId()",
+    "String get_HitParticle()",
+    "Boolean get_SpawnPileOnImpact()",
+    "Single get_ProjectileDamageOnImpact()",
+    "Int32 get_ProjectileAmount()",
+    "Single get_PowerLossAfterHit()",
+    "Single get_GroundDamage()",
+    "Single get_BuildingDamage()",
+    "Single get_CreatureDamage()",
+    "Single get_PileDamage()",
+    "Single get_ProjectileHitRadius()",
+    "Single get_DamageFalloff()",
+    "Boolean get_SpawnsFire()",
+    "Single get_FireIntensity()",
+    "Boolean get_SpawnsOil()",
+    "Byte get_FireType()",
+    "Boolean get_HasWetnessOnImpact()",
+    "Int32 get_WallHitHorizontalRange()",
+    "Int32 get_WallHitGroundHorizontalRange()",
+    "Single get_GroundHitMinRaycastLength()",
+    "Single get_GroundHitMaxRaycastLength()",
+    "Single get_GroundHitSpreadAngle()",
+    "Single get_WetnessOnImpact()",
+    "OilBlobType get_OilType()",
+    "String[] get_HitModifierEffectorIDs()",
+    "HitEffector[] get_OnHitEffectors()",
+    "HitEffector[] get_OnCriticalHitEffectors()",
+    "String get_ImpactAudioEvent()",
+    "Resource ResourceBlueprint()",
+    "String GetID()"
+   ],
+   "properties": [
+    "String PrefabId ro",
+    "String HitParticle ro",
+    "Boolean SpawnPileOnImpact ro",
+    "Single ProjectileDamageOnImpact ro",
+    "Int32 ProjectileAmount ro",
+    "Single PowerLossAfterHit ro",
+    "Single GroundDamage ro",
+    "Single BuildingDamage ro",
+    "Single CreatureDamage ro",
+    "Single PileDamage ro",
+    "Single ProjectileHitRadius ro",
+    "Single DamageFalloff ro",
+    "Boolean SpawnsFire ro",
+    "Single FireIntensity ro",
+    "Boolean SpawnsOil ro",
+    "Byte FireType ro",
+    "Boolean HasWetnessOnImpact ro",
+    "Int32 WallHitHorizontalRange ro",
+    "Int32 WallHitGroundHorizontalRange ro",
+    "Single GroundHitMinRaycastLength ro",
+    "Single GroundHitMaxRaycastLength ro",
+    "Single GroundHitSpreadAngle ro",
+    "Single WetnessOnImpact ro",
+    "OilBlobType OilType ro",
+    "String[] HitModifierEffectorIDs ro",
+    "HitEffector[] OnHitEffectors ro",
+    "HitEffector[] OnCriticalHitEffectors ro",
+    "String ImpactAudioEvent ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.SignComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.SlopeBuildingComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "String get_VoxelTypeID()",
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "String VoxelTypeID ro",
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.StairsComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "Boolean get_IsStairWall()",
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "Boolean IsStairWall ro",
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.TableComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.TradingPostComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "Int32 get_MaxTraders()",
+    "TraderSlot[] get_Slots()",
+    "Boolean get_TurnTowardsCenter()",
+    "Boolean get_TurnAwayFromCenter()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "Int32 MaxTraders ro",
+    "TraderSlot[] Slots ro",
+    "Boolean TurnTowardsCenter ro",
+    "Boolean TurnAwayFromCenter ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.TrapComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "Single get_SetupTime()",
+    "Single get_ChanceToHurt()",
+    "Single get_AffectsAnimal()",
+    "Single get_AffectsWorker()",
+    "Single get_AffectsEnemy()",
+    "Single get_AffectsDomesticAnimal()",
+    "Single get_Damage()",
+    "Single get_IgnoresArmor()",
+    "Single get_ArmorDamage()",
+    "Single get_CriticalChance()",
+    "BuildingType get_ComponentType()",
+    "UInt16 get_PathfindingPenaltyActive()",
+    "Single get_WalkSpeedMultiplierActive()",
+    "HitEffector[] get_OnHitEffectors()",
+    "HitEffector[] get_OnCriticalHitEffectors()",
+    "HitEffector[] get_OnSuccessfulHitEffector()",
+    "Single get_Weight()",
+    "String get_DecomposeModifiersId()",
+    "Single get_SpawnOilRadius()",
+    "Single get_SpawnFire()",
+    "Single get_SpawnFireRadius()",
+    "Single get_TriggerOnFire()",
+    "Byte get_OilType()",
+    "Byte get_FireType()",
+    "Single get_ChanceToDestroyAfterTriggering()",
+    "String GetID()"
+   ],
+   "properties": [
+    "Single SetupTime ro",
+    "Single ChanceToHurt ro",
+    "Single AffectsAnimal ro",
+    "Single AffectsWorker ro",
+    "Single AffectsEnemy ro",
+    "Single AffectsDomesticAnimal ro",
+    "Single Damage ro",
+    "Single IgnoresArmor ro",
+    "Single ArmorDamage ro",
+    "Single CriticalChance ro",
+    "BuildingType ComponentType ro",
+    "UInt16 PathfindingPenaltyActive ro",
+    "Single WalkSpeedMultiplierActive ro",
+    "HitEffector[] OnHitEffectors ro",
+    "HitEffector[] OnCriticalHitEffectors ro",
+    "HitEffector[] OnSuccessfulHitEffector ro",
+    "Single Weight ro",
+    "String DecomposeModifiersId ro",
+    "Single SpawnOilRadius ro",
+    "Single SpawnFire ro",
+    "Single SpawnFireRadius ro",
+    "Single TriggerOnFire ro",
+    "Byte OilType ro",
+    "Byte FireType ro",
+    "Single ChanceToDestroyAfterTriggering ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.VoxelBuildingComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "String get_VoxelTypeID()",
+    "BuildingType get_ComponentType()",
+    "String GetID()"
+   ],
+   "properties": [
+    "String VoxelTypeID ro",
+    "BuildingType ComponentType ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.WellComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "Single get_WaterBucketProductionTime()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "Single WaterBucketProductionTime ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.BuildingComponents.WindowComponentBlueprint",
+   "base": "Model",
+   "methods": [
+    "BuildingType get_ComponentType()",
+    "List`1 get_LockStates()",
+    "Single get_CoverClosed()",
+    "LockState get_DefaultLockState()",
+    "ThermalModel get_ThermalModel()",
+    "String GetID()"
+   ],
+   "properties": [
+    "BuildingType ComponentType ro",
+    "List`1 LockStates ro",
+    "Single CoverClosed ro",
+    "LockState DefaultLockState ro",
+    "ThermalModel ThermalModel ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.AdditionalMenuItems.PrioritiseBuildingConstructionMenuItem",
+   "base": "AdditionalMenuPrioritiseItem",
+   "methods": [
+    "Boolean Setup(AdditionalMenuFloatingElement overlayElement, AdditionalMenuItemData data)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.AdditionalMenuItems.PrioritiseBuildingDeConstructionMenuItem",
+   "base": "AdditionalMenuPrioritiseItem",
+   "methods": [
+    "Boolean Setup(AdditionalMenuFloatingElement overlayElement, AdditionalMenuItemData data)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.CommanderAI.BehaviourTreeTasks.SiegeBuildBlueprintPlan",
+   "base": "CommanderAIBTActionBase",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.CommanderAI.BehaviourTreeTasks.ConstructTargetBlueprintBTAction",
+   "base": "UnitsBTActionBase",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Manager.ResourcePileCount",
+   "base": "Object",
+   "methods": [
+    "Int32 get_UnreachableCount()",
+    "Int32 get_TotalCount()",
+    "Int32 get_ForbiddenCount()",
+    "Int32 get_StockpileTotalCount()",
+    "Int32 get_StockpileForbiddenCount()",
+    "Int32 get_StockpilePlacedCount()",
+    "Int32 get_AnimalFeederPlacedCount()",
+    "Int32 get_DroppedByEnemy()",
+    "Int32 get_OwnedByEnemy()",
+    "Int32 get_StockpileAllowedCount()",
+    "Int32 get_AllowedCount()",
+    "String ToString()",
+    "Void Add(ResourcePileCount b)",
+    "Void Subtract(ResourcePileCount b)",
+    "Void Add(ResourcePileInstance pile)",
+    "Void Subtract(ResourcePileInstance pile)",
+    "static Void Subtract(ResourcePileCount count, ResourcePileInstance pile, Int32 amount)",
+    "static Void Add(ResourcePileCount count, ResourcePileInstance pile, Int32 amount)",
+    "Void Reset()",
+    "Boolean ContentEquals(ResourcePileCount other)"
+   ],
+   "properties": [
+    "Int32 UnreachableCount rw",
+    "Int32 TotalCount rw",
+    "Int32 ForbiddenCount rw",
+    "Int32 StockpileTotalCount rw",
+    "Int32 StockpileForbiddenCount rw",
+    "Int32 StockpilePlacedCount rw",
+    "Int32 AnimalFeederPlacedCount rw",
+    "Int32 DroppedByEnemy rw",
+    "Int32 OwnedByEnemy rw",
+    "Int32 StockpileAllowedCount ro",
+    "Int32 AllowedCount ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Manager.ResourcePileFactory",
+   "base": "Object",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Manager.ResourcePileHaulingManager",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "Int32 get_CanBeStoredCount()",
+    "Int32 get_CanBeReStoredCount()",
+    "ConcurrentHashSet`1 get_CanBeStored()",
+    "ConcurrentHashSet`1 get_PilesToReStore()",
+    "Boolean IsMarkedForHauling(ResourcePileInstance pile)",
+    "Boolean IsMarkedForReStoring(ResourcePileInstance pile)",
+    "Void TriggerLazyReProcessAll(Boolean quickCheck)",
+    "Void QueueForReProcess(ResourcePileInstance pile)",
+    "Void ResourceTakenFromStorage(ResourcePileInstance pile)",
+    "Void ForceProcessPileState(ResourcePileInstance pile)",
+    "Void OnPileForbidStateChanged(IForbidable forbidable)"
+   ],
+   "properties": [
+    "Int32 CanBeStoredCount ro",
+    "Int32 CanBeReStoredCount ro",
+    "ConcurrentHashSet`1 CanBeStored ro",
+    "ConcurrentHashSet`1 PilesToReStore ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Manager.ResourcePileHaulingManagerDebugger",
+   "base": "Object",
+   "methods": [
+    "static ResultInfo get_QueueProcess()",
+    "static ResultInfo get_ReProcessAll()",
+    "static Void ProcessQueueBegin(Int32 queueSize)",
+    "static Void ProcessQueueEnd()",
+    "static Void ReProcessAllBegin(Int32 allCount)",
+    "static Void ReProcessAllEnd()",
+    "static Void ClearResults()",
+    "static Void UpdateThreadState(Boolean state)"
+   ],
+   "properties": [
+    "ResultInfo QueueProcess ro",
+    "ResultInfo ReProcessAll ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Manager.ResourcePileManager",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "IEnumerable`1 get_AllPiles()",
+    "IEnumerable`1 get_AllPileInstances()",
+    "IReadOnlyList`1 get_SpawnedPileInstances()",
+    "ResourcePileInstance get_LastSpawnedPile()",
+    "Dictionary`2 get_PilesByGridPosOnGround()",
+    "List`1 get_StartingResources()",
+    "List`1 get_CarcassesMarkedForStripping()",
+    "ConcurrentBag`1 get_IndicatorsToUpdate()",
+    "Int32 GetPilesCount()",
+    "Boolean ResourcePileWithProtoIdExists(String protoId)",
+    "Int32 GetStoredBlueprintAmount(Resource blueprint)",
+    "Void UpdatePlacedOnStorageBlueprintDictionary(ResourcePileInstance pile, IStorage storage)",
+    "Void UpdatePlacedOnStorageCategoryDictionary(ResourcePileInstance pile, IStorage storage)",
+    "Int32 GetStoredCategoryAmount(ResourceCategory category)",
+    "Void CategoryInstanceDictionaryTryGetValue(ResourceCategory category, HashSet`1& resourcePileInstances)",
+    "Void BlueprintInstancesSafeOperation(Resource blueprint, Action`1 operation)",
+    "TResult BlueprintInstancesSafeOperation(Resource blueprint, Func`2 operation)",
+    "TResult BlueprintInstancesSafeOperation(Resource blueprint, TState state, Func`3 operation)",
+    "HashSet`1 GetAllPiles(Resource blueprint)",
+    "Int32 GetTotalAmount(Resource blueprint)",
+    "Void CategoryInstancesSafeOperation(ResourceCategory resourceCategory, Action`1 operation)",
+    "TResult CategoryInstancesSafeOperation(ResourceCategory resourceCategory, TState state, Func`3 operation)",
+    "IEnumerable`1 IterateCategoryPiles(ResourceCategory category)",
+    "Void GetAllowedPilesAreaIDs(Resource blueprint, ISet`1& pilesAreaIDs)",
+    "HumanCarcassPileView SpawnPile(CreatureBase creature)",
+    "BuildingPileView SpawnPile(Resource blueprint, Vector3 worldPosition, BaseBuildingInstance binderBuilding)",
+    "BuildingPileView SpawnPile(Resource blueprint, Vector3 worldPosition, String buildingID)",
+    "BuildingPileView SpawnEnemyPile(Resource blueprint, Vector3 worldPosition, String buildingID)",
+    "BuildingPileView SpawnPile(MoveBuildingResourceInstance resource, Vector3 worldPosition, String buildingID)",
+    "ResourcePileView SpawnPileAnimalHarvest(ResourceInstance resource, Vector3 worldPosition, AnimalInstance owner)",
+    "ResourcePileView SpawnPile(ResourceInstance resource, Vector3 worldPosition, Boolean forbidOnInit, Single tempDisableHaulingSeconds)",
+    "ResourcePileView SpawnEnemyPile(ResourceInstance resource, Vector3 worldPosition, Boolean forbidOnInit)",
+    "ResourcePileView TeleportPile(ResourceInstance resource, Vec3Int gridPos, Boolean forbidOnInit)",
+    "ResourcePileView TeleportPile(ResourceInstance resource, Vector3 worldPosition, Boolean forbidOnInit)",
+    "ResourcePileView SpawnPile(ResourcePileInstance pile)",
+    "ResourcePileView GetView(ResourcePileInstance pile)",
+    "IEnumerable`1 GetView(Func`2 condition)",
+    "Int32 CountPiles(Func`2 condition)",
+    "ResourcePileInstance GetPileByGridPosition(Vec3Int position)",
+    "Void SpawnProfilePiles()",
+    "Void DisposeAllPiles()",
+    "Void KillAllPilesGameplay()",
+    "Void DisposePilesById(String id)",
+    "Void ForceDisposePile(IGameDisposable disposable)",
+    "Void SpawnResourcesFromVillageMap()",
+    "static Void TeleportPile(ResourceInstance resource, Vector3 position, Action`3 spawnCallback)",
+    "static Void SpawnResource(ResourceInstance resource, Vector3 position, Action`3 spawnCallback)",
+    "Void InstantiateStartingResourcePiles()",
+    "Void SpawnResourcesForSecondMap()"
+   ],
+   "properties": [
+    "IEnumerable`1 AllPiles ro",
+    "IEnumerable`1 AllPileInstances ro",
+    "IReadOnlyList`1 SpawnedPileInstances ro",
+    "ResourcePileInstance LastSpawnedPile ro",
+    "Dictionary`2 PilesByGridPosOnGround ro",
+    "List`1 StartingResources ro",
+    "List`1 CarcassesMarkedForStripping ro",
+    "ConcurrentBag`1 IndicatorsToUpdate ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Manager.ResourcePileTemperatureManager",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "static Int32 GetTemperatureThresholdIndex(Single temperature)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Manager.ResourcePileTracker",
+   "base": "MonoSingleton`1",
+   "methods": [
+    "ConcurrentHashSet`1 get_AllAllowed()",
+    "ConcurrentHashSet`1 get_CarcassPiles()",
+    "IReadOnlyDictionary`2 get_AllResourceCount()",
+    "Single get_LastRecountTime()",
+    "ISet`1 GetPilesByResourceId(String resourceId)",
+    "IReadOnlyDictionary`2 GetPilesByResourceId()",
+    "ResourcePileCount GetCount(Resource blueprint)",
+    "IEnumerable`1 UniqueResourcesCount()",
+    "ResourcePileCount GetCount(ItemMaterialCategory category)",
+    "ResourcePileCount GetCount(ResourceCategory category)",
+    "ResourcePileCount GetCount(String groupId)",
+    "ResourcePileCount GetCountByIdOrCategory(String id)",
+    "CreatureBase GetCarcassOwnerByOwnerCreationId(Int32 creationId)",
+    "Int32 GetTotalStockpilePilesNutrition()",
+    "Void ScheduleRecountPiles()",
+    "Boolean SearchForFilterHits(ResourceSearchFilter filter, Boolean ignoreForbidState)",
+    "Void OnSpawnPile(ResourcePileInstance pile)",
+    "Void OnPileDestroyed(ResourcePileInstance pile)",
+    "Void OnPileResourceAdded(ResourcePileInstance pile, Resource blueprint, Int32 count)",
+    "Void OnNewPileSpawnedOnStockpile(Resource blueprint, ResourcePileInstance pile)",
+    "Void OnPileForbidStateChange(IForbidable forbidable)"
+   ],
+   "properties": [
+    "ConcurrentHashSet`1 AllAllowed ro",
+    "ConcurrentHashSet`1 CarcassPiles ro",
+    "IReadOnlyDictionary`2 AllResourceCount ro",
+    "Single LastRecountTime ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Manager.ResourcePileUtils",
+   "base": "Object",
+   "methods": [
+    "static List`1 GetPilesFromStockpilesAndShelves()",
+    "static Boolean IsReachableByWorker(ResourcePileInstance pile)",
+    "static Boolean Reachable(ResourcePileInstance pile, BaseBuildingInstance building)",
+    "static Boolean Reachable(CreatureBase creatureBase, ResourcePileInstance pile, BaseBuildingInstance building)",
+    "static Boolean Reachable(CreatureBase creatureBase, Resource blueprint, BaseBuildingInstance building)",
+    "static Boolean Reachable(Resource blueprint, BaseBuildingInstance building)",
+    "static String GetStorage(ResourcePileInstance pileInstance)",
+    "static Int32 GetStorageUniqueId(ResourcePileInstance pileInstance)",
+    "static Single GetStatCurrentPercent(StatType statType, ResourcePileInstance resourcePileInstance)",
+    "static List`1 GetTooltipLines(ResourcePileInstance resourcePileInstance)",
+    "static String GetFormattedPileName(ResourcePileInstance resourcePileInstance)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Manager.ProtectorBuildingManager",
+   "base": "Object",
+   "methods": [
+    "Boolean IsProtected(Int32 nodeIndex)",
+    "Void Initialize(VillageMap villageMap)",
+    "Void Dispose()",
+    "static Vec3Int[] CreateNeighbors(Int32 radius)",
+    "Void GetProtectors(Vec3Int position, HashSet`1& outputSet)",
+    "Void DrawGizmos()",
+    "Void BuildingLoaded(BaseBuildingInstance building)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.WorldMap.VillagePlacementType",
+   "base": "Enum",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.State.ResourcePileInstance",
+   "base": "WorldObject",
+   "methods": [
+    "Boolean get_BlueprintExists()",
+    "Boolean get_PlacedOnAnimalFeeder()",
+    "Boolean get_PlacedOnPrisonStash()",
+    "Single get_HaulingDisabledSecondsRemaining()",
+    "Void set_HaulingDisabledSecondsRemaining(Single value)",
+    "ResourcePileInstanceInfo get_Info()",
+    "Void add_ForbidChangeEvent(Action`1 value)",
+    "Void remove_ForbidChangeEvent(Action`1 value)",
+    "Void add_ForbidStateWillChangeEvent(Action`1 value)",
+    "Void remove_ForbidStateWillChangeEvent(Action`1 value)",
+    "Void add_UrgentHaulChangeEvent(Action`1 value)",
+    "Void remove_UrgentHaulChangeEvent(Action`1 value)",
+    "Void add_OnResourceAddedEvent(Action`3 value)",
+    "Void remove_OnResourceAddedEvent(Action`3 value)",
+    "Void add_OnResourceTakenEvent(Action`3 value)",
+    "Void remove_OnResourceTakenEvent(Action`3 value)",
+    "Void add_ResourceStoredOnStockpileEvent(Action`2 value)",
+    "Void remove_ResourceStoredOnStockpileEvent(Action`2 value)",
+    "Void add_ResourceStoredOnStorageEvent(Action`2 value)",
+    "Void remove_ResourceStoredOnStorageEvent(Action`2 value)",
+    "Void add_SetCanBeHauledEvent(Action`2 value)",
+    "Void remove_SetCanBeHauledEvent(Action`2 value)",
+    "StockpileInstance get_InstanceStockpile()",
+    "UniversalStorage get_InstanceStorage()",
+    "List`1 get_Positions()",
+    "UInt16 get_PathfindingPenalty()",
+    "Single get_WalkSpeedMultiplier()",
+    "Single get_Flammability()",
+    "IStorage get_PlacedOnStorage()",
+    "Boolean get_IsPlacedOnStorageBuilding()",
+    "ZonePriority get_StoragePriority()",
+    "Boolean get_HasDied()",
+    "Boolean get_IsReserveAll()",
+    "Boolean get_DoNotCreateView()",
+    "Void set_DoNotCreateView(Boolean value)",
+    "ConcurrentHashSet`1 get_ReachablePositions()",
+    "Boolean get_CanBeHauled()",
+    "Boolean get_Frozen()",
+    "Void set_Frozen(Boolean value)",
+    "Boolean get_IsForbidden()",
+    "Void set_IsForbidden(Boolean value)",
+    "Boolean get_IsUrgentHaul()",
+    "Void set_IsUrgentHaul(Boolean value)",
+    "Resource get_Blueprint()",
+    "StatsInstance get_Stats()",
+    "DamageTakingAgentType get_DamageAgentType()",
+    "String ToString()",
+    "Void SetCanBeHauled(Boolean value)",
+    "Boolean IsStoredOnStockpile()",
+    "Boolean IsPlacedOnStockpile()"
+   ],
+   "properties": [
+    "Boolean BlueprintExists ro",
+    "Boolean PlacedOnAnimalFeeder rw",
+    "Boolean PlacedOnPrisonStash rw",
+    "Single HaulingDisabledSecondsRemaining rw",
+    "ResourcePileInstanceInfo Info rw",
+    "StockpileInstance InstanceStockpile rw",
+    "UniversalStorage InstanceStorage rw",
+    "List`1 Positions ro",
+    "UInt16 PathfindingPenalty ro",
+    "Single WalkSpeedMultiplier ro",
+    "Single Flammability ro",
+    "IStorage PlacedOnStorage ro",
+    "Boolean IsPlacedOnStorageBuilding ro",
+    "ZonePriority StoragePriority ro",
+    "Boolean HasDied ro",
+    "Boolean IsReserveAll ro",
+    "Boolean DoNotCreateView rw",
+    "ConcurrentHashSet`1 ReachablePositions ro",
+    "Boolean CanBeHauled ro",
+    "Boolean Frozen rw",
+    "Boolean IsForbidden rw",
+    "Boolean IsUrgentHaul rw",
+    "Resource Blueprint ro",
+    "StatsInstance Stats ro",
+    "DamageTakingAgentType DamageAgentType ro",
+    "Boolean HasActivePath ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.State.ResourcePileInstanceInfo",
+   "base": "ValueType",
+   "methods": [
+    "String get_LocalizedId()",
+    "String get_LocalizedGroup()",
+    "String get_StorageId()",
+    "Void SetStorageId(ResourcePileInstance resourcePileInstance)"
+   ],
+   "properties": [
+    "String LocalizedId ro",
+    "String LocalizedGroup ro",
+    "String StorageId rw"
+   ]
+  },
+  {
+   "type": "NSMedieval.State.SerializableDictionaryVector3ResourcePile",
+   "base": "SerializableDictionary`2",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.State.ZonePriority",
+   "base": "Enum",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Model.Animal+ModelBlueprintsByAnimalType",
+   "base": "Object",
+   "methods": [
+    "String GetId(AnimalType animalType)"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.Model.HumanoidBlueprint",
+   "base": "Model",
+   "methods": [
+    "Single get_RaidBattleScalesPointsMultiplier()",
+    "HumanType get_DefaultHumanType()",
+    "Single get_BuildablePassThroughDestroyChance()",
+    "String get_SelectionName()",
+    "String GetID()"
+   ],
+   "properties": [
+    "Single RaidBattleScalesPointsMultiplier ro",
+    "HumanType DefaultHumanType ro",
+    "Single BuildablePassThroughDestroyChance ro",
+    "String SelectionName ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Model.CombatAiAgentBlueprint",
+   "base": "Model",
+   "methods": [
+    "Boolean get_IsAggressive()",
+    "String get_Description()",
+    "String[] get_Goals()",
+    "String[] get_Sensors()",
+    "String[] get_Reactions()",
+    "String GetID()"
+   ],
+   "properties": [
+    "Boolean IsAggressive ro",
+    "String Description ro",
+    "String[] Goals ro",
+    "String[] Sensors ro",
+    "String[] Reactions ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Model.MapNew.AnimalPlacement",
+   "base": "Model",
+   "methods": [
+    "String get_AnimalId()",
+    "Single get_SpawnerChance()",
+    "IntRange get_InitialCount()",
+    "Int32 get_MaxCount()",
+    "Single get_SpawnSpeedMultiplier()",
+    "FloatRange get_Temperature()",
+    "Single get_OptimalTemperature()",
+    "String GetID()",
+    "Void Serialize(FVSerializer serializer)"
+   ],
+   "properties": [
+    "String AnimalId ro",
+    "Single SpawnerChance ro",
+    "IntRange InitialCount ro",
+    "Int32 MaxCount ro",
+    "Single SpawnSpeedMultiplier ro",
+    "FloatRange Temperature ro",
+    "Single OptimalTemperature ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.Model.MapNew.PropPlacement",
+   "base": "Model",
+   "methods": [
+    "List`1 get_PropsToPlace()",
+    "Int32 get_Count()",
+    "Single get_TerrainPercent()",
+    "HashSet`1 get_PlaceOnlyOnVoxels()",
+    "Boolean get_PlaceOnlyInWater()",
+    "Boolean get_BrushControlsDensity()",
+    "Boolean get_InvertBrushDensity()",
+    "IntRange get_ResourcePileAmount()",
+    "Int32 get_MinDistanceFromWorkers()",
+    "String GetID()",
+    "Void Serialize(FVSerializer serializer)"
+   ],
+   "properties": [
+    "List`1 PropsToPlace ro",
+    "Int32 Count ro",
+    "Single TerrainPercent ro",
+    "HashSet`1 PlaceOnlyOnVoxels ro",
+    "Boolean PlaceOnlyInWater ro",
+    "Boolean BrushControlsDensity ro",
+    "Boolean InvertBrushDensity ro",
+    "IntRange ResourcePileAmount ro",
+    "Int32 MinDistanceFromWorkers ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.UI.ConstructionPanelExtraView",
+   "base": "UIView",
+   "methods": [
+    "LayoutGroupView get_SubcategoryPanel()",
+    "Void SetupPanel(String buildingId, Boolean hasVariants)"
+   ],
+   "properties": [
+    "LayoutGroupView SubcategoryPanel ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.UI.InfoPanelStockpile",
+   "base": "SelectionExtraView",
+   "methods": [
+    "List`1 get_StorageObjects()"
+   ],
+   "properties": [
+    "List`1 StorageObjects ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.UI.ConstructionPanelManager",
+   "base": "PanelBase",
+   "methods": [
+    "BuildingCategoryUI get_CurrentCategory()",
+    "Void add_NotificationUpdate(Action`2 value)",
+    "Void remove_NotificationUpdate(Action`2 value)",
+    "Void add_PanelClosed(Action value)",
+    "Void remove_PanelClosed(Action value)",
+    "Void SetupCopyBuildingListener()",
+    "Void HighlightSubcategories(BuildingCategoryUI category, IEnumerable`1 subcategories)",
+    "Void DeselectCurrent()",
+    "Void OpenPanel(BuildingCategoryUI category, IEnumerable`1 subcategories)",
+    "Void Show()",
+    "Void Hide()",
+    "Void Initialize()",
+    "Void SetCategoriesInteractable(HashSet`1 ids, Boolean interactable)",
+    "Void SetSubCategoriesInteractable(HashSet`1 ids, Boolean interactable)",
+    "RectTransform GetSubcategoryTransform(String category)"
+   ],
+   "properties": [
+    "BuildingCategoryUI CurrentCategory rw"
+   ]
+  },
+  {
+   "type": "NSMedieval.UI.ResourcePileOverviewGroup",
+   "base": "LayoutGroupItemView",
+   "methods": [
+    "Void add_ItemDisposedAction(Action value)",
+    "Void remove_ItemDisposedAction(Action value)",
+    "Void SetInstance(ResourcePileInstance instance, Int32 index)",
+    "Boolean Unsubscribe()"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.UI.ResourcePilePanelView",
+   "base": "OverviewPanelView",
+   "methods": [
+    "String[] get_AllowedSortingGroups()",
+    "Void SetGroupAndShow(String sortingGroup)",
+    "Void Show()",
+    "Void Hide()"
+   ],
+   "properties": [
+    "String[] AllowedSortingGroups ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.UI.SelectionExtraStockpile",
+   "base": "SelectionExtraWindowView",
+   "methods": [
+    "Void UpdatePanel(InfoPanelStockpile infoPanelStockpile)",
+    "Void Hide()",
+    "Void Initialize()"
+   ],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.UI.ConstructionPanelView",
+   "base": "UIView",
+   "methods": [
+    "BuildingCategoryUI get_CurrentCategory()",
+    "ConstructionPanelManager get_ConstructionManager()",
+    "Void add_ShowCategoryEvent(Action`1 value)",
+    "Void remove_ShowCategoryEvent(Action`1 value)",
+    "Void add_ClosePanelEvent(Action value)",
+    "Void remove_ClosePanelEvent(Action value)",
+    "Void OpenPanelAndHighlight(BuildingCategoryUI category, IEnumerable`1 subcategories)",
+    "Void SetCategoriesInteractable(HashSet`1 categories, Boolean interactable)",
+    "RectTransform GetCategoryTransform(BuildingCategoryUI category)"
+   ],
+   "properties": [
+    "BuildingCategoryUI CurrentCategory ro",
+    "ConstructionPanelManager ConstructionManager ro"
+   ]
+  },
+  {
+   "type": "NSMedieval.UI.ResourcePileTooltipView",
+   "base": "TooltipViewNew",
+   "methods": [],
+   "properties": []
+  },
+  {
+   "type": "NSMedieval.UI.Utils.ZoneUtils",
+   "base": "Object",
+   "methods": [
+    "static List`1 GetYieldResources(String itemId)",
+    "static List`1 GetInfoLines(String itemId, Boolean showTemperature)",
+    "static Model Item(String itemId)",
+    "static String GetLocalizedRequiredBotanicalSkillLevel(Cropfield cropfield)",
+    "static List`1 GetFormattedRequiredSeed(String cropfieldID)"
+   ],
+   "properties": []
+  }
+ ]
+}

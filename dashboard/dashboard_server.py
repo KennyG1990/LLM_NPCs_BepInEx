@@ -1,5 +1,5 @@
 import os
-import json
+import json  # noqa: F401  (sync marker 2026-07-05)
 import sqlite3
 import sys
 import threading
@@ -10,6 +10,28 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from datetime import datetime
+
+# P3+ world systems live in gm_systems.py (orders, entities, world events,
+# diplomacy, romance, death history, disease, combat). Loaded by path so the
+# selftests' importlib loading of this module keeps working.
+def _load_sibling_module(name):
+    import importlib.util
+    module_path = Path(__file__).resolve().parent / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+gm_systems = _load_sibling_module("gm_systems")
+gm_devops = _load_sibling_module("gm_devops")
+
+class _GmCtx:
+    """Late-bound view of this module's globals for gm_systems, robust to
+    importlib loading where sys.modules lacks this module."""
+    def __getattr__(self, name):
+        return globals()[name]
+
+GM_CTX = _GmCtx()
 
 # Path to the actual game SQLite database (X4-aligned filename)
 DB_PATH = Path(os.path.expandvars(r'%APPDATA%\Going Medieval\LLM_NPCs\memory\npc_memory.sqlite3'))
@@ -402,7 +424,7 @@ def build_dialogue_prompt_context(conn, save_id, settler_id):
     ]
     barter_intents = [
         dict(r) for r in conn.execute(
-            "SELECT intent_type, item, terms, status, created_at FROM dialogue_barter_intents WHERE save_id = ? AND settler_id = ? ORDER BY created_at DESC LIMIT 5",
+            "SELECT id, intent_type, item, terms, status, created_at FROM dialogue_barter_intents WHERE save_id = ? AND settler_id = ? ORDER BY created_at DESC LIMIT 5",
             (save_id, settler_id)
         )
     ]
@@ -410,8 +432,29 @@ def build_dialogue_prompt_context(conn, save_id, settler_id):
     voice = ""
     if state and state["voice_profile"]:
         voice = state["voice_profile"]
-    elif profile and profile["traits"]:
-        voice = f"Voice cues from traits: {profile['traits']}"
+    elif profile:
+        # P2 slice 2: author a persistent voice profile from traits, role
+        # and backstory instead of raw trait cues; persist it so the voice
+        # stays stable across conversations.
+        voice = build_voice_profile(
+            profile["traits"],
+            profile["role"],
+            state["backstory_voice"] if state else "",
+        )
+        if not voice and profile["traits"]:
+            voice = f"Voice cues from traits: {profile['traits']}"
+        if voice and state:
+            conn.execute(
+                "UPDATE dialogue_states SET voice_profile = ? WHERE save_id = ? AND settler_id = ?",
+                (voice, save_id, settler_id)
+            )
+
+    trust_events = [
+        dict(r) for r in conn.execute(
+            "SELECT delta, reason, source, trust_after, created_at FROM trust_events WHERE save_id = ? AND settler_id = ? ORDER BY created_at DESC LIMIT 8",
+            (save_id, settler_id)
+        )
+    ]
 
     lines = [
         "=== DIALOGUE STATE ===",
@@ -450,68 +493,254 @@ def build_dialogue_prompt_context(conn, save_id, settler_id):
         "recent_claims": recent_claims,
         "contradictions": contradictions,
         "barter_intents": barter_intents,
+        "trust_events": trust_events,
         "prompt_context": "\n".join(lines),
     }
 
+# --- P2 slice 2: contradiction matching v2 -------------------------------
+# Deterministic claim-vs-claim matching. No test-specific vocabulary: a
+# conflict requires shared content words plus a negation flip, an antonym
+# pair, or a numeric mismatch. Model-provided contradiction objects still
+# win when present; this is the automatic fallback the worklog demanded.
+
+DIALOGUE_STOP_WORDS = {
+    "the", "and", "but", "you", "said", "say", "that", "this", "with", "from",
+    "have", "has", "had", "there", "was", "were", "are", "is", "not", "true",
+    "player", "npc", "can", "for", "before", "after", "into", "what", "know",
+    "will", "would", "your", "them", "they", "their", "very", "just", "about",
+    "want", "wants", "still", "then", "than",
+}
+
+NEGATION_TOKENS = {
+    "not", "no", "never", "none", "nothing", "isn't", "wasn't", "aren't",
+    "don't", "didn't", "doesn't", "cannot", "can't", "won't", "without",
+    "lack", "lacks", "lacked", "ran out", "out of",
+}
+
+CONTRADICTION_ANTONYM_PAIRS = (
+    ("enough", "ravenous"), ("enough", "starving"), ("enough", "hungry"),
+    ("plenty", "scarce"), ("plenty", "shortage"), ("abundant", "scarce"),
+    ("full", "hungry"), ("fed", "starving"), ("safe", "dangerous"),
+    ("alive", "dead"), ("friend", "enemy"), ("healthy", "sick"),
+    ("peace", "war"), ("kept", "broke"), ("finished", "unfinished"),
+)
+
+CHALLENGE_MARKERS = (
+    "you said", "but you said", "that's not true", "that is not true",
+    "you lied", "you're lying", "you are lying", "liar", "contradict",
+    "that's wrong", "that is wrong", "that's false", "that is false",
+    "you told me", "that isn't what",
+)
+
+_NUMBER_RE = None
+
+def _claim_numbers(text):
+    global _NUMBER_RE
+    if _NUMBER_RE is None:
+        import re
+        _NUMBER_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
+    return set(_NUMBER_RE.findall(text or ""))
+
+def _claim_tokens(text):
+    words = {w.strip(".,;:!?()[]{}\"'").lower() for w in str(text or "").split()}
+    return {w for w in words if len(w) >= 4 and w not in DIALOGUE_STOP_WORDS}
+
+def _has_negation(text):
+    lowered = f" {str(text or '').lower()} "
+    return any(f" {tok} " in lowered or f" {tok}," in lowered or f" {tok}." in lowered
+               for tok in NEGATION_TOKENS)
+
+def _antonym_conflict(text_a, text_b):
+    a = str(text_a or "").lower()
+    b = str(text_b or "").lower()
+    for left, right in CONTRADICTION_ANTONYM_PAIRS:
+        if (left in a and right in b) or (right in a and left in b):
+            return (left, right)
+    return None
+
+def claims_conflict(text_a, text_b):
+    """Return a human-readable reason when two claim texts conflict, else None."""
+    tokens_a = _claim_tokens(text_a)
+    tokens_b = _claim_tokens(text_b)
+    overlap = tokens_a.intersection(tokens_b)
+    antonyms = _antonym_conflict(text_a, text_b)
+    if antonyms and overlap:
+        # Antonym pairs are strong signals, but require at least one shared
+        # content word to avoid cross-topic false positives.
+        return f"Opposite statements ('{antonyms[0]}' vs '{antonyms[1]}') about: {', '.join(sorted(overlap)[:4])}."
+    if len(overlap) >= 2:
+        neg_a = _has_negation(text_a)
+        neg_b = _has_negation(text_b)
+        if neg_a != neg_b:
+            return f"Negation flip on shared subject: {', '.join(sorted(overlap)[:4])}."
+        nums_a = _claim_numbers(text_a)
+        nums_b = _claim_numbers(text_b)
+        if nums_a and nums_b and nums_a != nums_b and len(overlap) >= 2:
+            return f"Conflicting figures ({', '.join(sorted(nums_a)[:2])} vs {', '.join(sorted(nums_b)[:2])}) about: {', '.join(sorted(overlap)[:4])}."
+    return None
+
 def detect_dialogue_contradiction(conn, save_id, settler_id, player_text, npc_text, new_claims):
-    text = f"{player_text or ''} {npc_text or ''}".lower()
-    challenge_markers = (
-        "you said",
-        "but you said",
-        "that's not true",
-        "that is not true",
-        "you lied",
-        "lie",
-        "contradict",
-        "wrong",
-        "false",
-        "ravenous",
-        "starving",
-        "no food",
-        "not enough",
-    )
-    if not any(marker in text for marker in challenge_markers):
-        return None
-
-    stop_words = {
-        "the", "and", "but", "you", "said", "that", "this", "with", "from", "have",
-        "there", "was", "were", "are", "not", "true", "player",
-        "npc", "can", "for", "before", "after", "into", "what", "know",
-    }
-    words = {w.strip(".,;:!?()[]{}\"'").lower() for w in text.split()}
-    words = {w for w in words if len(w) >= 4 and w not in stop_words}
-    if not words:
-        return None
-
     active_claims = conn.execute("""
         SELECT id, claim_text
         FROM dialogue_claims
         WHERE save_id = ? AND settler_id = ? AND status = 'active'
         ORDER BY created_at DESC
-        LIMIT 20
+        LIMIT 30
     """, (save_id, settler_id)).fetchall()
-    for row in active_claims:
-        claim_words = {
-            w.strip(".,;:!?()[]{}\"'").lower()
-            for w in str(row["claim_text"]).split()
-        }
-        claim_words = {w for w in claim_words if len(w) >= 4 and w not in stop_words}
-        overlap = words.intersection(claim_words)
-        if len(overlap) >= 2:
-            return {
-                "claim_id": row["id"],
-                "claim": row["claim_text"],
-                "reason": f"Player challenged prior claim; overlapping terms: {', '.join(sorted(overlap)[:5])}.",
-            }
 
-    for claim in new_claims:
-        claim_text = claim.get("text") if isinstance(claim, dict) else str(claim)
-        if claim_text and "not" in text and any(w in claim_text.lower() for w in words):
-            return {
-                "claim": claim_text,
-                "reason": "New claim appears to conflict with the player challenge.",
-            }
+    # 1. Self-contradiction: a NEW claim conflicts with a prior active claim.
+    for claim in new_claims if isinstance(new_claims, list) else []:
+        claim_text = (claim.get("text") or claim.get("claim") or "") if isinstance(claim, dict) else str(claim)
+        if not claim_text.strip():
+            continue
+        for row in active_claims:
+            reason = claims_conflict(claim_text, row["claim_text"])
+            if reason:
+                return {
+                    "claim_id": row["id"],
+                    "claim": row["claim_text"],
+                    "reason": f"New claim '{claim_text.strip()}' conflicts with prior claim. {reason}",
+                    "source": "auto_self",
+                }
+
+    # 2. Player challenge: player calls out a prior claim explicitly.
+    text = f"{player_text or ''} {npc_text or ''}".lower()
+    if any(marker in text for marker in CHALLENGE_MARKERS):
+        words = _claim_tokens(text)
+        for row in active_claims:
+            overlap = words.intersection(_claim_tokens(row["claim_text"]))
+            if len(overlap) >= 2:
+                return {
+                    "claim_id": row["id"],
+                    "claim": row["claim_text"],
+                    "reason": f"Player challenged prior claim; overlapping terms: {', '.join(sorted(overlap)[:5])}.",
+                    "source": "auto_challenge",
+                }
+
+    # 3. Direct semantic conflict between the player statement and a prior
+    # claim (negation flip / antonyms), without an explicit challenge marker.
+    if player_text:
+        for row in active_claims:
+            reason = claims_conflict(player_text, row["claim_text"])
+            if reason:
+                return {
+                    "claim_id": row["id"],
+                    "claim": row["claim_text"],
+                    "reason": f"Player statement conflicts with prior claim. {reason}",
+                    "source": "auto_semantic",
+                }
     return None
+
+# --- P2 slice 2: deterministic trust rules --------------------------------
+
+TRUST_RULES = {
+    "contradiction_caught": -0.08,
+    "repeat_contradiction_step": -0.02,  # escalates with prior offenses
+    "contradiction_floor": -0.20,
+    "promise_kept": 0.06,
+    "promise_broken": -0.10,
+    "barter_declined": -0.02,
+    "consistent_claims": 0.02,
+}
+TRUST_MODEL_DELTA_CAP = 0.10           # model-provided delta is advisory
+TRUST_EXCHANGE_MIN = -0.25
+TRUST_EXCHANGE_MAX = 0.15
+
+def compute_trust_delta(model_delta, contradiction, prior_contradictions, claims_recorded):
+    """Blend the model's advisory trust_delta with deterministic rules.
+    Returns (delta, reasons)."""
+    reasons = []
+    model_component = clamp(numeric_or_default(model_delta, 0.0), -TRUST_MODEL_DELTA_CAP, TRUST_MODEL_DELTA_CAP)
+    rule_component = 0.0
+    if contradiction:
+        escalated = TRUST_RULES["contradiction_caught"] + \
+            TRUST_RULES["repeat_contradiction_step"] * min(int(prior_contradictions or 0), 6)
+        escalated = max(escalated, TRUST_RULES["contradiction_floor"])
+        rule_component += escalated
+        reasons.append(f"contradiction caught (offense #{int(prior_contradictions or 0) + 1}): {escalated:+.2f}")
+        # A caught lie cannot yield a net trust gain from model flattery.
+        model_component = min(model_component, 0.0)
+    elif claims_recorded:
+        rule_component += TRUST_RULES["consistent_claims"]
+        reasons.append(f"consistent claims: {TRUST_RULES['consistent_claims']:+.2f}")
+    if model_component:
+        reasons.append(f"model advisory: {model_component:+.2f}")
+    total = clamp(model_component + rule_component, TRUST_EXCHANGE_MIN, TRUST_EXCHANGE_MAX)
+    return total, reasons
+
+def record_trust_event(conn, save_id, settler_id, delta, reason, source, trust_after):
+    conn.execute("""
+        INSERT INTO trust_events (save_id, settler_id, delta, reason, source, trust_after, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (save_id, settler_id, float(delta), str(reason), str(source),
+          float(trust_after), datetime.utcnow().timestamp()))
+
+# --- P2 slice 2: voice authoring -------------------------------------------
+# Deterministic personality/backstory voice builder. Replaces the bare
+# "Voice cues from traits: ..." string with an authored speech register.
+
+VOICE_TRAIT_STYLES = {
+    "proud": "speaks formally and guards their reputation; bristles at slights",
+    "reckless": "blunt and quick-tongued; interrupts and overcommits",
+    "hungry": "distracted; steers talk toward food and provisions",
+    "kind": "warm, patient phrasing; softens bad news",
+    "cruel": "cold and cutting; enjoys discomfort",
+    "lazy": "drawls, complains about work, bargains to do less",
+    "hardworking": "clipped, practical speech; impatient with idle talk",
+    "devout": "invokes the saints and scripture; moralizes",
+    "cynical": "dry, skeptical asides; doubts fine promises",
+    "brave": "steady, direct, unshaken by threats",
+    "craven": "hedges, deflects, avoids commitment",
+    "curious": "asks questions back; chases tangents",
+    "greedy": "circles back to payment and profit",
+    "gluttonous": "vivid about meals; trades favors for food",
+    "melancholic": "wistful, speaks of losses and old days",
+    "sanguine": "cheerful, optimistic turns of phrase",
+    "choleric": "short fuse; escalates when contradicted",
+    "phlegmatic": "measured, slow to anger, few words",
+}
+
+VOICE_ROLE_REGISTERS = {
+    "scholar": "learned register with the odd Latin tag",
+    "farmer": "earthy rustic idiom, weather-and-soil metaphors",
+    "cook": "kitchen metaphors; measures people like recipes",
+    "builder": "plain constructive talk; measures twice",
+    "miner": "gruff, terse, superstitious about the deep",
+    "smith": "hammer-and-forge metaphors; values things well-made",
+    "tailor": "precise, fussy about appearances",
+    "guard": "clipped watch-report cadence; sizes up threats",
+    "steward": "diplomatic, ledger-minded, careful qualifiers",
+    "artisan": "flowery about craft, dismissive of shoddy work",
+    "animal handler": "gentle cadence, animal similes",
+}
+
+def build_voice_profile(traits, role, backstory=""):
+    cues = []
+    role_key = str(role or "").strip().lower()
+    for key, register in VOICE_ROLE_REGISTERS.items():
+        if key in role_key:
+            cues.append(register)
+            break
+    seen = set()
+    for raw in str(traits or "").replace(";", ",").split(","):
+        trait = raw.strip().lower()
+        if not trait or trait in seen:
+            continue
+        seen.add(trait)
+        style = VOICE_TRAIT_STYLES.get(trait)
+        if style:
+            cues.append(style)
+        elif trait.isalpha() and 3 <= len(trait) <= 16:
+            # Only lexical trait words color the voice; internal tokens like
+            # "midageeffector01" from raw game data are skipped.
+            cues.append(f"lets their {trait} nature color their words")
+    if backstory:
+        cues.append(f"draws on their past: {str(backstory).strip()}")
+    if not cues:
+        return ""
+    voice = "Speech register: " + "; ".join(cues[:6]) + ". "
+    voice += "Keep a period-appropriate medieval register; avoid modern idioms."
+    return voice
 
 def upsert_character_sheet(conn, save_id, settler_id, sheet):
     if not save_id or not settler_id or not isinstance(sheet, dict):
@@ -1286,6 +1515,26 @@ def init_db():
             conn.execute("CREATE INDEX IF NOT EXISTS idx_character_sheets_save ON character_sheets(save_id, updated_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_dialogue_claims_npc_time ON dialogue_claims(save_id, settler_id, created_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_dialogue_barter_npc_time ON dialogue_barter_intents(save_id, settler_id, created_at DESC)")
+
+            # 14. P2 slice 2: auditable trust changes. Every trust delta is a
+            # row so the dashboard can show WHY a settler trusts the player.
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS trust_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    save_id TEXT NOT NULL,
+                    settler_id TEXT NOT NULL,
+                    delta REAL NOT NULL,
+                    reason TEXT DEFAULT '',
+                    source TEXT DEFAULT 'exchange',
+                    trust_after REAL,
+                    created_at REAL NOT NULL
+                );
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_trust_events_npc_time ON trust_events(save_id, settler_id, created_at DESC)")
+
+            # 15. P3+ world-system tables (orders, entities, events,
+            # diplomacy, romance, death history, disease, combat).
+            gm_systems.ensure_tables(conn)
         
         # Seed lore entries
         seed_lore(conn)
@@ -1890,6 +2139,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 conn.close()
             return
 
+        if gm_systems.dispatch(self, GM_CTX, "GET", path, query=query, payload=None):
+            return
+        if gm_devops.dispatch(self, GM_CTX, "GET", path, query=query, payload=None):
+            return
         self._send_json(404, {"error": "not found"})
 
     def do_POST(self):
@@ -2410,6 +2663,83 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 conn.close()
             return
 
+        elif path == "/api/dialogue/barter/resolve":
+            save_id = payload.get("save_id")
+            settler_id = payload.get("settler_id")
+            intent_id = payload.get("intent_id")
+            resolution = str(payload.get("resolution") or "").strip().lower()
+            if not save_id or not settler_id or not intent_id:
+                self._send_json(400, {"error": "save_id, settler_id and intent_id are required"})
+                return
+            if resolution not in {"fulfilled", "broken", "declined"}:
+                self._send_json(400, {"error": "resolution must be fulfilled, broken or declined"})
+                return
+            conn = get_db_connection()
+            try:
+                with conn:
+                    now = datetime.utcnow().timestamp()
+                    intent = conn.execute(
+                        "SELECT * FROM dialogue_barter_intents WHERE id = ? AND save_id = ? AND settler_id = ?",
+                        (intent_id, save_id, settler_id)
+                    ).fetchone()
+                    if not intent:
+                        self._send_json(404, {"error": "barter intent not found"})
+                        return
+                    if intent["status"] != "proposed":
+                        self._send_json(409, {"error": f"intent already {intent['status']}"})
+                        return
+                    conn.execute(
+                        "UPDATE dialogue_barter_intents SET status = ? WHERE id = ?",
+                        (resolution, intent_id)
+                    )
+                    rule_key = {"fulfilled": "promise_kept", "broken": "promise_broken", "declined": "barter_declined"}[resolution]
+                    delta = TRUST_RULES[rule_key]
+                    current_trust = get_dialogue_trust(conn, save_id, settler_id)
+                    new_trust = clamp(current_trust + delta, 0.0, 1.0)
+                    disclosure = dialogue_disclosure_level(new_trust)
+                    conn.execute("""
+                        INSERT INTO dialogue_states
+                        (save_id, settler_id, trust, disclosure_level, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(save_id, settler_id) DO UPDATE SET
+                            trust = excluded.trust,
+                            disclosure_level = excluded.disclosure_level,
+                            updated_at = excluded.updated_at
+                    """, (save_id, settler_id, new_trust, disclosure, now))
+                    label = f"{intent['intent_type']} {intent['item']}".strip()
+                    record_trust_event(
+                        conn, save_id, settler_id, delta,
+                        f"barter intent '{label}' {resolution}: {delta:+.2f}",
+                        f"barter_{resolution}", new_trust
+                    )
+                    memory_category = "promises" if resolution == "fulfilled" else ("betrayals" if resolution == "broken" else "events")
+                    memory_text = {
+                        "fulfilled": f"Kept the bargain: {label}. Terms: {intent['terms'] or 'unspecified'}.",
+                        "broken": f"Broke the bargain: {label}. Terms were: {intent['terms'] or 'unspecified'}.",
+                        "declined": f"Declined the proposal: {label}.",
+                    }[resolution]
+                    insert_typed_memory(
+                        conn, save_id, settler_id,
+                        "promise" if resolution == "fulfilled" else ("betrayal" if resolution == "broken" else "event"),
+                        memory_text,
+                        7 if resolution != "declined" else 4,
+                        metadata={"barter_intent_id": intent_id, "resolution": resolution, "category_hint": memory_category}
+                    )
+                    state = build_dialogue_prompt_context(conn, save_id, settler_id)
+                self._send_json(200, {
+                    "ok": True,
+                    "resolution": resolution,
+                    "trust": new_trust,
+                    "trust_delta": delta,
+                    "disclosure_level": disclosure,
+                    "state": state,
+                })
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            finally:
+                conn.close()
+            return
+
         elif path == "/api/dialogue/exchange":
             save_id = payload.get("save_id")
             settler_id = payload.get("settler_id")
@@ -2436,9 +2766,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     )
                     if auto_contradiction:
                         contradiction = auto_contradiction
-                        trust_delta = min(trust_delta, -0.08)
-                    elif claims and trust_delta == 0:
-                        trust_delta = 0.02
+                    prior_contradictions_row = conn.execute(
+                        "SELECT contradiction_count FROM dialogue_states WHERE save_id = ? AND settler_id = ?",
+                        (save_id, settler_id)
+                    ).fetchone()
+                    prior_contradictions = prior_contradictions_row["contradiction_count"] if prior_contradictions_row else 0
+                    trust_delta, trust_reasons = compute_trust_delta(
+                        trust_delta,
+                        contradiction=bool(contradiction),
+                        prior_contradictions=prior_contradictions,
+                        claims_recorded=len(claims) if isinstance(claims, list) else (1 if claims else 0),
+                    )
                     new_trust = clamp(current_trust + trust_delta, 0.0, 1.0)
                     disclosure = dialogue_disclosure_level(new_trust)
                     conn.execute("""
@@ -2452,6 +2790,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             backstory_voice = CASE WHEN excluded.backstory_voice != '' THEN excluded.backstory_voice ELSE dialogue_states.backstory_voice END,
                             updated_at = excluded.updated_at
                     """, (save_id, settler_id, new_trust, disclosure, voice_profile, backstory_voice, now))
+
+                    if trust_delta != 0 or trust_reasons:
+                        record_trust_event(
+                            conn, save_id, settler_id, trust_delta,
+                            "; ".join(trust_reasons) if trust_reasons else "no rule fired",
+                            "exchange", new_trust
+                        )
 
                     if player_text:
                         insert_typed_memory(
@@ -2790,6 +3135,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 conn.close()
             return
 
+        if gm_systems.dispatch(self, GM_CTX, "POST", path, query=None, payload=payload):
+            return
+        if gm_devops.dispatch(self, GM_CTX, "POST", path, query=None, payload=payload):
+            return
         self._send_json(404, {"error": "not found"})
 
 def main():
