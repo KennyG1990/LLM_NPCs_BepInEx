@@ -278,6 +278,12 @@ namespace GoingMedieval.LLM_NPCs
                         sb.AppendLine($"- WARNING: {context.Environment.NearbyThreats.Count} threat(s) nearby!");
                     }
                     sb.AppendLine();
+                    // PRIORITY: the whole colony's urgent needs — the settler should
+                    // weigh these heavily (a starving, shelterless colony needs food
+                    // and building far more than personal errands).
+                    sb.AppendLine("=== COLONY PRIORITIES (URGENT — the whole settlement) ===");
+                    sb.AppendLine(ColonyAlerts.Current);
+                    sb.AppendLine();
                     sb.AppendLine("=== EVALUATED ACTION OPTIONS (Ranked by priority) ===");
                     for (int i = 0; i < Math.Min(5, options.Count); i++)
                     {
@@ -1067,37 +1073,14 @@ namespace GoingMedieval.LLM_NPCs
             try
             {
                 if (settler?.gameObject == null) return;
-                if (!GameBridge.TryGetValidatedSettlerIdentity(settler.gameObject, out _, out _, out var runtimeWorkerComponent))
-                {
-                    LLMNPCsPlugin.Log.LogWarning($"[{settler.name}] ExecuteEat: Could not resolve native worker component.");
-                    return;
-                }
-
-                // Try setting via Stats system first (StatType.Hunger = 3)
-                if (NPCContextExtractor.SetStatValue(runtimeWorkerComponent, 3, 5.0f))
-                {
-                    LLMNPCsPlugin.Log.LogInfo($"[{settler.name}] Injected food need override (value = 5.0f) via Stats system.");
-                    return;
-                }
-
-                var needs = NPCContextExtractor.GetFieldValue<object>(runtimeWorkerComponent, "needs");
-                if (needs != null)
-                {
-                    var food = NPCContextExtractor.GetFieldValue<object>(needs, "food");
-                    if (food != null)
-                    {
-                        NPCContextExtractor.SetFieldValue(food, "value", 5.0f);
-                        LLMNPCsPlugin.Log.LogInfo($"[{settler.name}] Injected food need override (value = 5.0f) via fallback needs field.");
-                    }
-                    else
-                    {
-                        LLMNPCsPlugin.Log.LogWarning($"[{settler.name}] ExecuteEat: 'food' need object not found.");
-                    }
-                }
+                // REAL behaviour, not a cheat: force the settler to actually walk to
+                // accessible food and eat it. (The old code just set the hunger stat
+                // to full — fake. The LLM decides they're hungry; we make them GO EAT.)
+                var goal = GameBridge.TryTriggerEat(settler.gameObject);
+                if (goal != null)
+                    LLMNPCsPlugin.LogToFile($"[Eat] {settler.name} forced to go eat for real (goal={goal}).");
                 else
-                {
-                    LLMNPCsPlugin.Log.LogWarning($"[{settler.name}] ExecuteEat: 'needs' object not found.");
-                }
+                    LLMNPCsPlugin.LogToFile($"[Eat] {settler.name} no eat-goal matched; the game's own hunger AI will feed them if food is accessible + in supply.");
             }
             catch (Exception ex)
             {

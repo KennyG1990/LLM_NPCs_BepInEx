@@ -66,7 +66,7 @@ namespace GoingMedieval.LLM_NPCs
         private readonly HashSet<string> _activeDecisionRequests = new HashSet<string>();
         private DateTime _lastColonyInfluenceUtc = DateTime.MinValue;
         private bool _colonyInfluenceInFlight;
-        private const double ColonyInfluenceIntervalSeconds = 60d;
+        private const double ColonyInfluenceIntervalSeconds = 900d; // was 60s — a per-minute LLM call; 15 min is plenty
 
         private void OnDestroy()
         {
@@ -123,9 +123,23 @@ namespace GoingMedieval.LLM_NPCs
             }
         }
 
+        private bool _autonomyForcedOnce = false;
+
         private void Update()
         {
-            AutonomyManager.Instance.IsFullAutonomyEnabled = EnableFullAutonomy?.Value ?? false;
+            // Autonomy is the operating mode for this build (the villagers run the
+            // colony themselves). An older/stale config could pin EnableFullAutonomy
+            // off; correct it ONCE at startup, then respect the in-panel toggle.
+            if (!_autonomyForcedOnce && EnableFullAutonomy != null)
+            {
+                _autonomyForcedOnce = true;
+                if (!EnableFullAutonomy.Value)
+                {
+                    EnableFullAutonomy.Value = true;
+                    try { Config.Save(); } catch { }
+                }
+            }
+            AutonomyManager.Instance.IsFullAutonomyEnabled = EnableFullAutonomy?.Value ?? true;
 
             PromptTrace.SetEnabled(EnablePromptTracing?.Value ?? true);
 
@@ -305,25 +319,24 @@ namespace GoingMedieval.LLM_NPCs
             DecisionInterval = Config.Bind(
                 "Gameplay",
                 "DecisionInterval",
-                180f,
+                300f,
                 "Seconds between routine LLM decisions for each NPC. Event triggers "
-                + "(raids, etc.) still fire immediately. 10s burned ~1400 calls/hr; "
-                + "180s (3 min) is a reasonable idle cadence — raise for lower cost."
+                + "(raids, etc.) still fire immediately. Each decision is several LLM "
+                + "calls, so keep this high. 300s (5 min) per settler is a good default."
             );
-            // Guard against the old cost-heavy default persisted in existing
-            // config files: never let routine decisions run more than once a
-            // minute (the 10s setting burned thousands of LLM calls/hour).
-            if (DecisionInterval.Value < 60f)
+            // Guard against cost-heavy values persisted in existing config files:
+            // never let routine decisions run more than once every 2 minutes.
+            if (DecisionInterval.Value < 120f)
             {
-                Log.LogWarning($"[Config] DecisionInterval was {DecisionInterval.Value}s (too frequent/expensive); raising to 180s.");
-                DecisionInterval.Value = 180f;
+                Log.LogWarning($"[Config] DecisionInterval was {DecisionInterval.Value}s (too frequent/expensive); raising to 300s.");
+                DecisionInterval.Value = 300f;
             }
 
             EnableFullAutonomy = Config.Bind(
                 "Gameplay",
                 "EnableFullAutonomy",
-                false,
-                "If true, LLM decisions are executed as blueprints/jobs. If false, NPCs will only reason and complain using dialogue bubbles."
+                true,   // default ON: the whole point is villagers building the village themselves (Strategic Model). Toggle off in the LLM NPCs Settings panel to make NPCs only reason/complain.
+                "If true, LLM decisions AND the deterministic Strategic Model are executed as real blueprints/jobs (villagers build the village themselves). If false, NPCs only reason and complain via dialogue bubbles."
             );
 
             LogDecisions = Config.Bind(
@@ -564,12 +577,28 @@ namespace GoingMedieval.LLM_NPCs
 
         private void ProcessNPCs()
         {
-            LogToFile("[Plugin:ProcessNPCs] Finding settlers");
-            // Find all validated settlers via GameBridge
+            // LOAD GATE — the game must report its load pipeline FULLY complete
+            // before the mod touches anything. Settler objects exist mid-load,
+            // and acting on them then (designations, blueprints, forced goals)
+            // wedges the loader — the loading-screen hang that killed Libury and
+            // reproduced on a fresh map. Fail-closed: not ready -> do nothing.
+            if (!GameBridge.IsWorldReady())
+                return;
+
+            // Find all validated settlers via GameBridge (per-second; not logged
+            // to avoid flooding the log window and burying builder telemetry).
             var settlers = GameBridge.GetValidatedSettlers();
-            LogToFile($"[Plugin:ProcessNPCs] Found {settlers.Count} validated settlers");
 
             TryStartColonyInfluence(settlers);
+
+            // Strategic Model: deterministic "villagers build their own village"
+            // actuator. Censuses infrastructure gaps (storage, beds) and fires the
+            // proven placers. Gated internally on the full-autonomy master switch,
+            // so it only runs when the player has handed the colony to the AI.
+            if (ColonyBuilder.ShouldTick())
+            {
+                ColonyBuilder.Tick(settlers);
+            }
 
             // P3: execute queued player orders from the dashboard ai_orders queue.
             if (OrderExecutor.ShouldPoll() && MemoryManager != null)

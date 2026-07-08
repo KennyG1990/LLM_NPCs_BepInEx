@@ -1,3 +1,93 @@
+# Session 2026-07-07/08 (Cowork, Fable 5) — RELEASE BLOCKER FIXED + verified live
+
+## ✅ ROOT CAUSE REVISED: the "save bloat" hang was actually MOD-MUTATION-DURING-LOAD
+A FRESH map (no mod structures) hung at "Loading Slopes" ~40% exactly like
+Libury's 37.5% — while the mod was designating trees/forage MID-LOAD behind the
+loading screen. Bloat made loads heavier, but the wedge mechanism was the mod
+touching world state before the loader finished.
+- FIX: `GameBridge.IsWorldReady()` gates ProcessNPCs (the whole pipeline) on
+  `NSMedieval.Controllers.LoadingController.IsLoadingComplete` (+ not
+  IsSceneTransition / IsLeavingMainScene). Fail-CLOSED. Ground truth decompiled
+  to validation/decompiled/NSMedieval_Controllers_LoadingController.cs.
+- PROOF: fresh embark (Henderskelf) loads clean; save reload loads clean.
+
+## ✅ RELOAD IDEMPOTENCY (the duplicate-structures bug) — fixed + verified
+- New `src/BuiltState.cs`: detects world (re)load via ActiveVillage identity,
+  resets ALL session statics (ColonyBuilder/HouseBuilder/ColonyHome/gatherers),
+  persists home + house plan + roof progress + completion per save id
+  (validation/built_state/<save>.txt), always cross-checked against world truth.
+- HouseBuilder: re-ADOPTS persisted plan at the same site after reload
+  (regenerates layout deterministically, verifies pieces in-world per-cell via
+  new StockpilePlacer.BuildingExistsAt), skips existing pieces in Step().
+- ColonyHome: RESTORES persisted home; no more centroid drift on reload.
+- Stockpile census FIXED: `CountVerifiedStockpiles()` — StockpileExists at
+  Start needs LEVEL y but instances store WORLD y (Start.y/MapBlockHeight);
+  this was the historic "unreliable census". Placement gate back on census.
+- PROOF (roundtrip1 via menu-resume + roundtrip2 in-process load WITH roofs):
+  stockpiles=2 seen, sp=0 placed; home RESTORED; house re-adopted → done;
+  action=stable. No duplicates. Roof-bearing save round-trips.
+
+## ◐ Known warts (queued)
+- Step() makes ONE blocked floor attempt right after adoption before Complete
+  short-circuits (harmless; add early return).
+- Beds placed before floors → dirt under beds + "not dry" floor skips.
+- Doors: placed as blueprints, construction not verified, no retry on failure
+  (Ken observed unfinished interior door). Need verify+retry pass.
+- bash mount caches stale reads of built_state files — use Read tool.
+
+## ◐ UNDERGROUND v1 (CellarBuilder.cs) — built, partially validated live
+Dig-into-hillside food cellar via the game's own dig-marker path (ground truth:
+decompiled DigMarkerResourceManager → OnCreateResource/CreateInstance →
+ConstructionJobManager.CreateDigJobs → DigGoal). Wired as ColonyBuilder P5
+(after house), idempotent via BuiltState.CellarMarked, telemetry line "cellar:".
+VERIFIED LIVE: site scan runs, correctly declines on flat terrain
+("no minable hill face near home — needs stairs support (v2)").
+NOT yet exercised: actual marker creation + settlers digging (needs a save with
+a hill within WorkRadius, or v2 stairs). v2: dig stairs down on flat maps, room
+finishing (floor/door), FOOD stockpile w/ filter inside, temperature check.
+Ken's rationale: food preserves better underground; seasons matter less.
+
+## 🔥 NEXT SESSION #1 — RESEARCH CHAIN + DIG-DOWN STAIRS (Ken directive)
+Flat maps are NO excuse: settlers must dig DOWN via stairs. Chain to build:
+1. RESEARCH BENCH: colony has had "Research table missing" alert all run and
+   never acted — add research_bench (verify id in building_ids.txt) as a
+   ColonyBuilder priority + wire alert into the plan.
+2. RESEARCH: crack the research API (ResearchManager? decompile) — queue techs
+   the colony NEEDS (stairs/underground if gated) driven by colony goals.
+3. STAIRS DOWN: dig staircase voxels descending from surface near home
+   (DigSlope markers / stairs building), then hollow a room at level-1, floor
+   +door+FOOD stockpile w/ filter inside = true cold cellar on ANY terrain.
+4. Validate live: markers → DigGoal digging → room exists → food stored inside.
+GENERAL PRINCIPLE (Ken): the colony must understand PREREQUISITE CHAINS
+(research→unlock→build), not just place what's already available.
+
+## 🔥 NEXT SESSION #2 — EQUIP LOGIC (Ken, with screenshot proof)
+Live alert "HUNTER LACKS RANGED WEAPON": all 3 settlers assigned hunting jobs
+with NO ranged weapons — while weapons AND armour sit on the stockpile. The
+colony assigns jobs but never equips for them. Fix:
+1. Read the equipment alerts (GlobalWarningMessagesManager effector warnings
+   include this) into ColonyAlerts.
+2. Execution: force EquipGoal (known-valid goal id per handoff cheatsheet) on
+   settlers whose job needs gear; ground-truth the weapon/armor assignment API
+   (decompile equipment/outfit manager) so hunters take bows, fighters take
+   armor.
+3. Same prerequisite principle: job assignment implies equipment implies
+   crafting it if none exists (bow production chain later).
+
+## 🎯 DESIGN BAR (Ken, this session): reference docs are the finished-mod spec
+`C:\Users\Moshi\Desktop\X4 AI Influence\AI Influence - Systems - Going Medieval`
+(00-Overview … 11-Gameplay Examples; incl. 06 Romance & Marriage = lineages:
+courtship → children, father's surname, LLM-written family backstories.)
+Strategic layer must PLAN AHEAD, not react ("not a child reacting to emotions"):
+- House v2: bigger rooms (≥4x4 interior), space for future furniture/settlers,
+  verified doors, floors-before-beds, expansion margin around footprint.
+- Siting v2: use per-cell game metrics (Soil%, Sunlight, Traversal, Stability)
+  — do NOT build the house on 100% soil (reserve for future fields).
+- Stockpiles v2: multiple specialized zones w/ filters (food near cookfire,
+  materials near construction, armory) instead of one mixed pile.
+- NPC lens: "what would I WANT if I lived here" drives colony decisions, on
+  top of per-settler mood/stats via Player2.
+
 # Session 2026-07-07 (Cowork, opus) — summary
 
 ✅✅ STOCKPILE ACTUALLY BUILDS NOW (game-verified, not a DB flag). Two real
@@ -56,57 +146,35 @@ Shipped + verified this session:
   (2) upsert_character_sheet threw IntegrityError on a duplicate
   character_sheet_mood_modifiers (kind,label) which rolled back the ENTIRE
   sheet transaction (that's why NO real sheet ever persisted). Fix: INSERT OR
-  REPLACE on mood_modifiers + traits.
-  VERIFIED LIVE (Libury): all 4 settlers now persist full sheets — 15 skills
-  each with level + PASSION (★), plus age/height/weight matching the creation
-  screen exactly (Alan Tirel: age 45, h158, w61). Character sheet captures
-  everything the game tracks. Server-side capture at validation/last_sheet_post.json
-  + /api/dev/sheets_debug pinned the root cause.
+  REPLACE on mood_m
+## 2026-07-07 — Strategic Model (autonomous village builder)
+Built `ColonyBuilder.cs`: deterministic three-layer actuator (Read Model → Strategic → Validator/Actuator).
+- Census from GAME TRUTH: `StockpilePlacer.CountStockpilesInWorld()` (StockpileManager.Stockpiles) + `CountBuildings(id)` (BuildingsManagerMain.GetBuildingsCount — placed blueprints + built).
+- Decide: one build/tick, priority STORAGE (stockpiles==0) → BED (beds<pop). Self-limits vs census; per-session caps + 120s failure backoff as belt-and-suspenders.
+- Act: verified TryPlaceStockpileNear / deployed TryPlaceBuildingNear (game CanPlace* rejects water/invalid terrain).
+- Hooked in Plugin.ProcessNPCs after TryStartColonyInfluence; gated on AutonomyManager.IsFullAutonomyEnabled (EnableFullAutonomy config, default false).
+- Build: SUCCESS 0 errors. Deploy skipped (game running). STATUS ◐ built+compiles, NOT live-verified — game not foreground-able while user's browser holds focus (game pauses in background).
+- To verify next: EnableFullAutonomy=true, bring GM to foreground, watch census → stockpile (verified) then bed blueprint appears on valid ground and settlers construct it. Bed placer (task 12) still needs first live visual confirmation.
 
-  (historical note) The blocker first presented as: the mod's PostJson pipeline
-  was NOT persisting ANY data for the current save (Libury: 0 memory profiles, 0
-  character sheets). Server-side instrument (validation/last_sheet_post.json)
-  proved the character-sheet POST NEVER REACHES the server. So the extraction/
-  storage code is correct but the mod→dashboard HTTP writes are being dropped.
-  Prime suspect: the _isServerOffline circuit breaker (MemoryManager.cs:143)
-  latching (early timeouts on the old 250ms client) and CheckServerStatus not
-  resetting it. Fixes attempted: 250ms→3000ms timeout, resilient JSON
-  serialization (ReferenceLoopHandling/Error-handled) — neither restored writes,
-  which points at the breaker being latched rather than serialize/timeout.
-  NEXT (C# diagnostic build): log at PostJson entry (called? _isServerOffline
-  state?) and at SaveCharacterSheet entry; likely fix = reset _isServerOffline
-  on save load / make CheckServerStatus self-heal reliably, or bypass the
-  breaker for localhost. This unblocks character sheets AND all other mod
-  telemetry.
-  Dev tooling added: /api/dev/decompile, /api/dev/dump_character,
-  /api/dev/place_test (actions: place_stockpile|probe_direct|player2_decide|
-  dump_character), /api/dev/last_order, /api/dev/decisions, /api/dev/sheets_debug,
-  mod-log added to /api/dev/log.
+## 2026-07-07 — Autonomous survival + build loop (settlers gather/cook/eat/build)
+GROUND TRUTH (decompiled): ResourcePileInstance.IsForbidden(set); ResourcePileManager.AllPileInstances;
+BuildingPlacementManager.SpawnBlueprint = INTERACTIVE cursor path (bug) → replaced with game's own
+no-cursor commit: SpawnFromPool→CreateAndReturnBuildingInstance→CacheBuildingInstance(fires
+ConstructionController.BlueprintPlaced)→ObjectPlacedOnMap (from decompiled SpawnEnemyBuilding+CacheBuildingInstance).
+PlantResourceManager.GetPlant(Vec3Int)+PlantMapResourceInstance.SetCurrentOrder(OrderType.Chopping)=designate tree for wood.
 
-# Active Backlog
+NEW MODULES:
+- ResourceUnforbidder: allow all forbidden ground piles (settlers can haul/eat). VERIFIED: 0 forbidden/197 piles, starving alert cleared.
+- WoodGatherer: designate nearby trees OrderType.Chopping (bounded, session cap 40). VERIFIED: 4 settlers "Cutting", piles 101→197.
+- HouseBuilder: staged NxN house (perimeter walls→door→roof) via exact-cell CommitPlayerBlueprint. VERIFIED: walls+door placed & built (Maud "Constructing"). Roof: place at ay+1 (fix), needs final live confirm.
+- StockpilePlacer.CommitPlayerBlueprint / TryPlaceBuildingAt / DumpBuildingIds / Count* census helpers.
+- ColonyBuilder ordered plan: unforbid → gather wood → stockpile → camp_fire(cook) → beds(per pop) → house. Heartbeat + writes validation/colony_status.txt (reliable telemetry vs flooded log).
+- Plugin: force EnableFullAutonomy on at startup (stale cfg pinned it off); MenuIntegration exposes autonomy toggle + fixes Decision Interval slider (was clamping 300→60).
 
-Last updated: 2026-07-06 (Cowork session, picked up from Codex)
-
-## 2026-07-06 status sweep
-
-- ✅ P2 slice 2 (a-e): contradiction v2, trust rules + trust_events, barter
-  resolution, voice authoring, dashboard panels — `dialogue_p2_slice2_selftest` PASS
-- ✅ P3 backend: ai_orders + bounded NL parser + endpoints + dashboard — `gm_systems_selftest` PASS
-- ✅ P4 backend: entities/mentions/visits/recruitment + dashboard — PASS
-- ✅ P5 backend: world_events + propagation + knowledge + timeline — PASS
-- ✅ P6 backend: relations/rounds/fatigue-peace/pacts(limit 2)/tribute/banish/pardon + proclamations→events — PASS
-- ✅ P7 backend: intimacy/stages/proposal gating/decay/initiative — PASS
-- ✅ P8 backend: 50-interaction gate, milestone story, decline path — PASS
-- ✅ P9 backend: infect/resist/immunity/quarantine/treat/tick/outbreak→event — PASS
-- ✅ P10 backend: incident classification, stances from trust, aftermath→events/deaths — PASS
-- ◐ P11: checklists written (`validation/SCENARIO_CHECKLISTS.md`); backend steps ◐, in-game steps ☐
-- 🖥 OPEN (host-gated): dotnet build gate; C# surfacing of P3+ (order execution,
-  event/dialogue injection into prompts via /api/events/known, romance/disease/combat in-game);
-  live floating-dialogue proof
-- Note: two selftest cases to add later — explicit tribute terms assert, banish/pardon assert
-- ✅ UNBLOCKED 2026-07-06: dashboard started via start_dashboard.bat; P2 proven
-  LIVE in-game via the game stream (see PLAN.md P2 status for full evidence).
-- ✅ Iteration loop established: gm_devops.py endpoints (/api/dev/build,
+KEY IDS: camp_fire (cook), hay_sleeping_spot (bed), wood_wall_element/wood_door/wood_roof_whole (house). 780 ids in validation/building_ids.txt.
+GOTCHA: kill→must poll status until game_running=false (+3s) BEFORE launch, else stale DLL keeps running. In-game log floods (NPC pipeline) → use colony_status.txt / building_ids.txt files.
+REMAINING: roof live-confirm (ay+1); cooking a MEAL (station built, needs raw-food+cook job verify); LLM zone-hinted planner (task 15) still deterministic.
+_devops.py endpoints (/api/dev/build,
   /api/dev/game/launch|kill|restart, /api/dev/status) + game stream
   (/api/game/screen + /api/game/input) = full edit→build→deploy→relaunch→verify
   cycle over HTTP, no desktop automation. Runbook in QUICKSTART.md.

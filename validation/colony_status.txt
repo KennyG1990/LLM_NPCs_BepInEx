@@ -1,0 +1,10 @@
+time: 00:23:37
+census: autonomy=True pop=3 stockpiles=2 cookfire=1 beds=3 house=done [placed sp=0 cook=0 bed=0]
+action: need=RESEARCH-TABLE autonomy=True pop=3 stockpiles=2 cookfire=1 beds=3 house=done [placed sp=0 cook=0 bed=0] -> ok: building blueprint 'research_table' committed at (67,5,78) — NO cursor; settlers will construct it
+house:  house: RE-ADOPTED persisted site (63,79) lvl 5: 22 pieces verified in-world, roofs 8/8
+unforbid: allowed 0 (forbidden=0 total=115)
+wood:   designated 0 trees (scanned 10, session 0)
+food:   hunt+0 forage+0 (session hunt=1 forage=0)
+cellar: cellar: no minable hill face near home (flat terrain) — needs stairs support (v2)
+home:   home RESTORED at (67,5,79) from persisted state, radius 22
+alerts: Colony infrastructure is adequate; focus on comfort, defence, and growth.

@@ -1,0 +1,3 @@
+home.x=157
+home.y=5
+home.z=155

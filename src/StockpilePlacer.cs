@@ -23,6 +23,11 @@ namespace GoingMedieval.LLM_NPCs
         private static Type _managerType;
         private static Type _vec3IntType;
 
+        /// <summary>When set (grid {x,y,z}), placements anchor on the colony HOME
+        /// waypoint instead of the (roaming) settler, keeping the village compact.
+        /// Set by ColonyHome.Establish.</summary>
+        public static int[] HomeAnchor = null;
+
         private static Type FindType(string fullName)
         {
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
@@ -149,6 +154,374 @@ namespace GoingMedieval.LLM_NPCs
             return _mbh;
         }
 
+        // ─── Building (blueprint) placement — real construction path ──────────
+        internal static string LastBuildingDiag = "";
+
+        private static object RepoInstance(string repoShortName)
+        {
+            var repo = FindTypeByName(repoShortName);
+            if (repo == null) { LastBuildingDiag = repoShortName + " type not found"; return null; }
+            object instance = null;
+            for (var t = repo; t != null && instance == null; t = t.BaseType)
+            {
+                var p = t.GetProperty("Instance",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly);
+                if (p != null) { try { instance = p.GetValue(null, null); } catch { } }
+            }
+            if (instance == null) LastBuildingDiag = repoShortName + ".Instance null";
+            return instance;
+        }
+
+        private static MethodInfo FindMethod(Type start, string name, int argc)
+        {
+            for (var t = start; t != null; t = t.BaseType)
+                foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                    if (m.Name == name && m.GetParameters().Length == argc) return m;
+            return null;
+        }
+
+        /// <summary>Log every building id in BaseBuildingRepository so the plan can
+        /// target the cooking station / walls / roof / door by their true ids.</summary>
+        public static void DumpBuildingIds()
+        {
+            try
+            {
+                var instance = RepoInstance("BaseBuildingRepository");
+                if (instance == null) { LLMNPCsPlugin.LogToFile("[BuildingIds] repo instance null"); return; }
+                var itype = instance.GetType();
+                var ids = new System.Text.StringBuilder();
+                int n = 0;
+                for (var ft = itype; ft != null; ft = ft.BaseType)
+                    foreach (var f in ft.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                    {
+                        object val; try { val = f.GetValue(instance); } catch { continue; }
+                        System.Collections.IEnumerable items = (val as System.Collections.IDictionary)?.Values ?? (val as System.Collections.IEnumerable);
+                        if (items == null || val is string) continue;
+                        foreach (var it in items)
+                        {
+                            if (it == null) continue;
+                            string bid = null;
+                            try { bid = it.GetType().GetMethod("GetID")?.Invoke(it, null) as string; } catch { }
+                            if (bid != null) { ids.Append(bid + " "); n++; }
+                        }
+                        if (n > 0) break;
+                    }
+                // chunk the log so no single line is enormous
+                var s = ids.ToString();
+                LLMNPCsPlugin.LogToFile($"[BuildingIds] count={n}");
+                for (int i = 0; i < s.Length; i += 400)
+                    LLMNPCsPlugin.LogToFile("[BuildingIds] " + s.Substring(i, Math.Min(400, s.Length - i)));
+                // Also write to the mod folder (readable outside the flooded log).
+                try
+                {
+                    System.IO.File.WriteAllText(
+                        @"F:\DEV_ENV\projects\Mods\Going Medieval\LLM_NPCs_BepInEx\validation\building_ids.txt",
+                        $"count={n}\n{s}");
+                }
+                catch { }
+            }
+            catch (Exception ex) { LLMNPCsPlugin.LogToFile("[BuildingIds] EXC: " + ex.Message); }
+        }
+
+        /// <summary>Get a building blueprint (BaseBuildingBlueprint) from the
+        /// game's BaseBuildingRepository by id, listing available ids on miss.</summary>
+        private static object GetBuildingBlueprint(string id)
+        {
+            try
+            {
+                var instance = RepoInstance("BaseBuildingRepository");
+                if (instance == null) return null;
+                var itype = instance.GetType();
+                var getById = FindMethod(itype, "GetByID", 1);
+                object bp = null;
+                if (!string.IsNullOrEmpty(id) && getById != null)
+                { try { bp = getById.Invoke(instance, new object[] { id }); } catch { } }
+                if (bp != null) { LastBuildingDiag = "ok GetByID " + id; return bp; }
+                // Enumerate the repository to (a) find a bed-ish blueprint and
+                // (b) surface real ids for diagnosis.
+                var ids = new System.Text.StringBuilder();
+                object bedish = null;
+                for (var ft = itype; ft != null; ft = ft.BaseType)
+                    foreach (var f in ft.GetFields(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                    {
+                        object val; try { val = f.GetValue(instance); } catch { continue; }
+                        System.Collections.IEnumerable items = (val as System.Collections.IDictionary)?.Values ?? (val as System.Collections.IEnumerable);
+                        if (items == null || val is string) continue;
+                        foreach (var it in items)
+                        {
+                            if (it == null) continue;
+                            string bid = null;
+                            try { bid = it.GetType().GetMethod("GetID")?.Invoke(it, null) as string; } catch { }
+                            if (bid == null) continue;
+                            if (ids.Length < 400) ids.Append(bid + ",");
+                            if (bedish == null && (bid.IndexOf("bed", StringComparison.OrdinalIgnoreCase) >= 0 || bid.IndexOf("sleep", StringComparison.OrdinalIgnoreCase) >= 0))
+                                bedish = it;
+                        }
+                        if (ids.Length > 0) break;
+                    }
+                if (bedish != null && string.IsNullOrEmpty(id)) { LastBuildingDiag = "ok bedish"; return bedish; }
+                LastBuildingDiag = $"GetByID('{id}')=null; avail=[{ids}]";
+                return null;
+            }
+            catch (Exception ex) { LastBuildingDiag = "EXC: " + (ex.InnerException?.Message ?? ex.Message); return null; }
+        }
+
+        /// <summary>
+        /// Place a real building BLUEPRINT the game's settlers then construct —
+        /// AUTONOMOUSLY, with NO cursor hand-off. The old path called
+        /// BuildingPlacementManager.SpawnBlueprint, which (decompiled) runs
+        /// InitializeBuilding + MouseUpSpawnInitializeBuildings: that's the
+        /// INTERACTIVE placement that attaches a preview to the player's mouse.
+        /// Instead we replicate the game's OWN post-click commit chain directly
+        /// at a chosen cell (ground truth: SpawnEnemyBuilding + CacheBuildingInstance):
+        ///   SpawnFromPool -> CreateAndReturnBuildingInstance -> CacheBuildingInstance
+        ///   (fires ConstructionController.BlueprintPlaced => a real construction
+        ///   job settlers haul + build) -> ObjectPlacedOnMap.
+        /// BuildingsManagerMain.CanPlace still gates the cell (rejects water /
+        /// invalid terrain), and SpawnFromPool returning null is a second gate.
+        /// </summary>
+        public static string TryPlaceBuildingNear(GameObject settlerGo, string buildingId)
+        {
+            try
+            {
+                object blueprint = GetBuildingBlueprint(buildingId);
+                if (blueprint == null) return "no building blueprint :: " + LastBuildingDiag;
+
+                var vmType = FindType("NSMedieval.Village.VillageManager");
+                var activeVillage = vmType?.GetProperty("ActiveVillage",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+                var map = activeVillage?.GetType().GetProperty("Map")?.GetValue(activeVillage, null);
+                if (map == null) return "no VillageMap";
+                var bmm = map.GetType().GetProperty("BuildingsManagerMain")?.GetValue(map, null);
+                if (bmm == null) return "no BuildingsManagerMain";
+                var origin = settlerGo != null ? settlerGo.transform.position : Vector3.zero;
+                var settlerNode = map.GetType().GetMethod("GetNodeByWorldPos")?.Invoke(map, new object[] { origin });
+                if (settlerNode == null) return "settler node null";
+                var anchor = settlerNode.GetType().GetProperty("Position")?.GetValue(settlerNode, null);
+                int ax = ReadIntField(anchor, "x", "X"), ay = ReadIntField(anchor, "y", "Y"), az = ReadIntField(anchor, "z", "Z");
+                // Anchor on the colony HOME waypoint (compact village) if set.
+                if (HomeAnchor != null) { ax = HomeAnchor[0]; ay = HomeAnchor[1]; az = HomeAnchor[2]; }
+
+                var canPlace = bmm.GetType().GetMethod("CanPlace",
+                    new[] { blueprint.GetType(), _vec3IntType ?? (_vec3IntType = FindTypeByName("Vec3Int")), typeof(int), typeof(bool) });
+                if (canPlace == null) return "CanPlace method not found";
+
+                // Scan outward from the settler for the first cell CanPlace accepts
+                // (dry land, valid stability/terrain — no water, no impossible tile).
+                for (int radius = 1; radius <= 14; radius++)
+                {
+                    for (int dx = -radius; dx <= radius; dx++)
+                        foreach (var dz in (Math.Abs(dx) == radius
+                                 ? Enumerable.Range(-radius, radius * 2 + 1)
+                                 : new[] { -radius, radius }.AsEnumerable()))
+                        {
+                            int cx = ax + dx, cz = az + dz;
+                            var cell = MakeVec3Int(cx, ay, cz);
+                            if (cell == null) return "Vec3Int null";
+                            bool ok;
+                            try { ok = (bool)canPlace.Invoke(bmm, new[] { blueprint, cell, (object)0, (object)true }); }
+                            catch { ok = false; }
+                            if (!ok) continue;
+                            // Never build ON a stockpile zone — CanPlace allows it
+                            // (zones aren't buildings) but it blocks storage cells
+                            // and looks idiotic (live bug: research table placed on
+                            // the stockpile). StockpileExists is the game's truth.
+                            if (IsOnStockpile(cx, ay, cz)) continue;
+
+                            string commit = CommitPlayerBlueprint(map, bmm, blueprint, cell, 0);
+                            if (commit != null) { LastBuildingDiag = commit; continue; } // this cell was blocked; try next
+
+                            string bid = null;
+                            try { bid = blueprint.GetType().GetMethod("GetID")?.Invoke(blueprint, null) as string; } catch { }
+                            return $"ok: building blueprint '{bid}' committed at ({cx},{ay},{cz}) — NO cursor; settlers will construct it";
+                        }
+                }
+                return $"no valid CanPlace cell within 14 of settler ({ax},{ay},{az}) for the building :: {LastBuildingDiag}";
+            }
+            catch (Exception ex) { return "building placement error: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>Place a specific building at an EXACT grid cell (for multi-cell
+        /// structures like houses). Returns "ok:..." on success, else a diagnostic.
+        /// CanPlace gates the cell; SpawnFromPool-null is a second gate.</summary>
+        public static string TryPlaceBuildingAt(int cx, int cy, int cz, string buildingId, int angle = 0)
+        {
+            try
+            {
+                object blueprint = GetBuildingBlueprint(buildingId);
+                if (blueprint == null) return "no bp :: " + LastBuildingDiag;
+                var vmType = FindType("NSMedieval.Village.VillageManager");
+                var activeVillage = vmType?.GetProperty("ActiveVillage",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+                var map = activeVillage?.GetType().GetProperty("Map")?.GetValue(activeVillage, null);
+                if (map == null) return "no map";
+                var bmm = map.GetType().GetProperty("BuildingsManagerMain")?.GetValue(map, null);
+                if (bmm == null) return "no bmm";
+                var canPlace = bmm.GetType().GetMethod("CanPlace",
+                    new[] { blueprint.GetType(), _vec3IntType ?? (_vec3IntType = FindTypeByName("Vec3Int")), typeof(int), typeof(bool) });
+                if (canPlace == null) return "no CanPlace";
+                var cell = MakeVec3Int(cx, cy, cz);
+                if (cell == null) return "no cell";
+                // Hard gate: never build in water / on slopes (building CanPlace lets
+                // walls over water through; CanPlaceStockpile reliably rejects it).
+                if (!IsDryBuildableGround(cx, cy, cz)) return $"not dry ground @({cx},{cy},{cz})";
+                if (IsOnStockpile(cx, cy, cz)) return $"on stockpile zone @({cx},{cy},{cz})";
+                bool ok;
+                try { ok = (bool)canPlace.Invoke(bmm, new[] { blueprint, cell, (object)angle, (object)true }); }
+                catch { ok = false; }
+                if (!ok) return $"CanPlace false @({cx},{cy},{cz})";
+                string commit = CommitPlayerBlueprint(map, bmm, blueprint, cell, angle);
+                if (commit != null) return "blocked :: " + commit;
+                return $"ok: '{buildingId}' @({cx},{cy},{cz})";
+            }
+            catch (Exception ex) { return "err: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>Place a ROOF at a grid cell. Roofs are NOT normal buildings —
+        /// they're components placed via BuildingPlacementManager.SpawnRoofAutoTesting
+        /// (the game's own non-interactive roof path: sets the roof blueprint +
+        /// RoofComponentBlueprint, then CreateRoofs → DragSpawnRoof + CanPlaceRoof +
+        /// RoofComponentManager.CreateAndCacheRoofComponentInstance). Ground truth:
+        /// decompiled BuildingPlacementManager.SpawnRoofAutoTesting/CreateRoofs.</summary>
+        public static string TryPlaceRoofAt(int cx, int cy, int cz, string roofId = "wood_roof_whole")
+        {
+            try
+            {
+                object blueprint = GetBuildingBlueprint(roofId);
+                if (blueprint == null) return "no roof bp :: " + LastBuildingDiag;
+                var bpmType = FindType("NSMedieval.BuildingComponents.BuildingPlacementManager");
+                var bpm = bpmType?.GetProperty("Instance",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+                if (bpm == null) return "no BuildingPlacementManager";
+                var method = FindMethod(bpmType, "SpawnRoofAutoTesting", 5);
+                if (method == null) return "no SpawnRoofAutoTesting";
+                _vec3IntType = _vec3IntType ?? FindTypeByName("Vec3Int");
+                var cell = MakeVec3Int(cx, cy, cz);
+                var scale = MakeVec3Int(1, 1, 1);
+                if (cell == null || scale == null) return "Vec3Int null";
+                var listType = typeof(System.Collections.Generic.List<>).MakeGenericType(_vec3IntType);
+                var positions = Activator.CreateInstance(listType);
+                listType.GetMethod("Add").Invoke(positions, new[] { cell });
+                try { method.Invoke(bpm, new[] { blueprint, cell, (object)0, scale, positions }); }
+                catch (Exception se) { return "SpawnRoofAutoTesting exc: " + (se.InnerException?.Message ?? se.Message); }
+                return $"ok: roof invoked @({cx},{cy},{cz})";
+            }
+            catch (Exception ex) { return "roof err: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>The settler's current grid node (x,y,z level) or null.</summary>
+        public static int[] SettlerNode(GameObject settlerGo)
+        {
+            try
+            {
+                var vmType = FindType("NSMedieval.Village.VillageManager");
+                var activeVillage = vmType?.GetProperty("ActiveVillage",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+                var map = activeVillage?.GetType().GetProperty("Map")?.GetValue(activeVillage, null);
+                if (map == null || settlerGo == null) return null;
+                var node = map.GetType().GetMethod("GetNodeByWorldPos")?.Invoke(map, new object[] { settlerGo.transform.position });
+                var pos = node?.GetType().GetProperty("Position")?.GetValue(node, null);
+                if (pos == null) return null;
+                return new[] { ReadIntField(pos, "x", "X"), ReadIntField(pos, "y", "Y"), ReadIntField(pos, "z", "Z") };
+            }
+            catch { return null; }
+        }
+
+        /// <summary>True if CanPlace accepts a wall at this exact cell — used by the
+        /// house planner to find clear, buildable ground.</summary>
+        public static bool CanPlaceWallAt(int cx, int cy, int cz, string wallId = "wood_wall_element")
+        {
+            try
+            {
+                object blueprint = GetBuildingBlueprint(wallId);
+                if (blueprint == null) return false;
+                var vmType = FindType("NSMedieval.Village.VillageManager");
+                var activeVillage = vmType?.GetProperty("ActiveVillage",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+                var map = activeVillage?.GetType().GetProperty("Map")?.GetValue(activeVillage, null);
+                var bmm = map?.GetType().GetProperty("BuildingsManagerMain")?.GetValue(map, null);
+                if (bmm == null) return false;
+                var canPlace = bmm.GetType().GetMethod("CanPlace",
+                    new[] { blueprint.GetType(), _vec3IntType ?? (_vec3IntType = FindTypeByName("Vec3Int")), typeof(int), typeof(bool) });
+                var cell = MakeVec3Int(cx, cy, cz);
+                if (canPlace == null || cell == null) return false;
+                // Only site the house on DRY, FLAT ground (rejects water/slopes).
+                if (!IsDryBuildableGround(cx, cy, cz)) return false;
+                try { return (bool)canPlace.Invoke(bmm, new[] { blueprint, cell, (object)0, (object)true }); }
+                catch { return false; }
+            }
+            catch { return false; }
+        }
+
+        private static Type _factionOwnershipType;
+
+        /// <summary>
+        /// Directly commit a player construction blueprint at a grid cell with NO
+        /// cursor interaction, mirroring the game's own internal chain. Returns
+        /// null on success, or a diagnostic string on failure (so the caller can
+        /// try another cell).
+        /// </summary>
+        private static string CommitPlayerBlueprint(object map, object bmm, object blueprint, object cell, int angle)
+        {
+            try
+            {
+                var bpmType = FindType("NSMedieval.BuildingComponents.BuildingPlacementManager");
+                var bpm = bpmType?.GetProperty("Instance",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+                if (bpm == null) return "BuildingPlacementManager.Instance null";
+
+                _factionOwnershipType = _factionOwnershipType ?? FindTypeByName("FactionOwnership");
+                object player = _factionOwnershipType != null ? Enum.ToObject(_factionOwnershipType, 0) : (object)0; // Player
+
+                // SpawnFromPool(blueprint, Vec3Int gridPosition, int angleY, FactionOwnership)
+                MethodInfo spawnFromPool = null;
+                for (var t = bpmType; t != null && spawnFromPool == null; t = t.BaseType)
+                    foreach (var m in t.GetMethods(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                        if (m.Name == "SpawnFromPool")
+                        {
+                            var ps = m.GetParameters();
+                            if (ps.Length == 4 && ps[1].ParameterType == (_vec3IntType ?? (_vec3IntType = FindTypeByName("Vec3Int"))))
+                            { spawnFromPool = m; break; }
+                        }
+                if (spawnFromPool == null) return "SpawnFromPool(bp,Vec3Int,int,Faction) not found";
+
+                object view;
+                try { view = spawnFromPool.Invoke(bpm, new[] { blueprint, cell, (object)angle, player }); }
+                catch (Exception se) { return "SpawnFromPool exc: " + (se.InnerException?.Message ?? se.Message); }
+                if (view == null) return "SpawnFromPool returned null (cell blocked)";
+
+                // worldPos = GridUtils.GetWorldPosition(cell)
+                var gridUtils = FindTypeByName("GridUtils");
+                var getWorldPos = gridUtils?.GetMethod("GetWorldPosition", new[] { _vec3IntType });
+                object worldPos = getWorldPos != null ? getWorldPos.Invoke(null, new[] { cell }) : (object)Vector3.zero;
+
+                // CreateAndReturnBuildingInstance(bp, view, worldPos, angleY, Player) — binds instance to view
+                var createRet = FindMethod(bmm.GetType(), "CreateAndReturnBuildingInstance", 5);
+                if (createRet == null) return "CreateAndReturnBuildingInstance(5) not found";
+                try { createRet.Invoke(bmm, new[] { blueprint, view, worldPos, (object)angle, player }); }
+                catch (Exception ce) { return "CreateAndReturnBuildingInstance exc: " + (ce.InnerException?.Message ?? ce.Message); }
+
+                // CacheBuildingInstance(view, false) — registers + fires
+                // ConstructionController.BlueprintPlaced (the construction JOB) +
+                // stability + forbidden areas, because a fresh instance is in
+                // ConstructionPhase.Blueprint.
+                var cache = FindMethod(bmm.GetType(), "CacheBuildingInstance", 2);
+                if (cache == null) return "CacheBuildingInstance(2) not found";
+                try { cache.Invoke(bmm, new[] { view, (object)false }); }
+                catch (Exception cae) { return "CacheBuildingInstance exc: " + (cae.InnerException?.Message ?? cae.Message); }
+
+                // ObjectPlacedOnMap(view) — finalizes physical placement.
+                var objPlaced = FindMethod(bpmType, "ObjectPlacedOnMap", 1);
+                if (objPlaced != null)
+                {
+                    try { objPlaced.Invoke(bpm, new[] { view }); }
+                    catch (Exception oe) { LastBuildingDiag = "ObjectPlacedOnMap exc (cached ok): " + (oe.InnerException?.Message ?? oe.Message); }
+                }
+                return null; // success
+            }
+            catch (Exception ex) { return "commit error: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
         private static object ManagerInstance()
         {
             _managerType = _managerType ?? FindType("NSMedieval.Stockpiles.StockpileManager");
@@ -242,6 +615,8 @@ namespace GoingMedieval.LLM_NPCs
                 int ax = ReadIntField(anchorPos, "x", "X");
                 int ay = ReadIntField(anchorPos, "y", "Y");
                 int az = ReadIntField(anchorPos, "z", "Z");
+                // Anchor on the colony HOME waypoint (compact village) if set.
+                if (HomeAnchor != null) { ax = HomeAnchor[0]; ay = HomeAnchor[1]; az = HomeAnchor[2]; }
 
                 // SITE SELECTION (utility-scored, per the RTS reference docs):
                 // score every candidate anchor by how many cells of the size x size
@@ -410,6 +785,168 @@ namespace GoingMedieval.LLM_NPCs
                 int c = 0; foreach (var x in sp) c++; return c;
             }
             catch { return -2; }
+        }
+
+        // ─── Census helpers for the Strategic Model (ColonyBuilder) ───────────
+        // Reuse the exact live-manager / map machinery the verified placers use so
+        // the census reads the same game truth we place against.
+
+        private static object GetLiveStockpileManager()
+        {
+            _managerType = _managerType ?? FindType("NSMedieval.Stockpiles.StockpileManager");
+            if (_managerType == null) return null;
+            object fallback = null;
+            foreach (var c in UnityEngine.Object.FindObjectsOfType(_managerType))
+            {
+                if (SelfVerifies(c)) return c;
+                fallback = fallback ?? c;
+            }
+            return fallback ?? ManagerInstance();
+        }
+
+        private static MethodInfo _canPlaceStock;
+        /// <summary>True only on DRY, FLAT, BUILDABLE ground. Uses the game's own
+        /// StockpileManager.CanPlaceStockpile (strict) which — unlike building
+        /// CanPlace — reliably REJECTS water and slopes. Used to gate house/building
+        /// placement so villagers never build in the pond. Returns true if the
+        /// check can't run (don't block when the manager isn't ready).</summary>
+        public static bool IsDryBuildableGround(int x, int ay, int z)
+        {
+            try
+            {
+                var mgr = GetLiveStockpileManager();
+                if (mgr == null) return true;
+                _canPlaceStock = _canPlaceStock ?? mgr.GetType().GetMethod("CanPlaceStockpile");
+                var cell = MakeVec3Int(x, ay, z);
+                if (_canPlaceStock == null || cell == null) return true;
+                return (bool)_canPlaceStock.Invoke(mgr, new[] { cell, (object)false });
+            }
+            catch { return true; }
+        }
+
+        /// <summary>Number of stockpile zones currently in the world. Returns -1
+        /// when the manager isn't available yet (save still loading). Used by the
+        /// Strategic Model to decide whether the colony still needs storage.</summary>
+        public static int CountStockpilesInWorld()
+        {
+            var mgr = GetLiveStockpileManager();
+            if (mgr == null) return -1;
+            return CountStockpiles(mgr);
+        }
+
+        private static object GetBuildingsManager()
+        {
+            var vmType = FindType("NSMedieval.Village.VillageManager");
+            var activeVillage = vmType?.GetProperty("ActiveVillage",
+                BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+            var map = activeVillage?.GetType().GetProperty("Map")?.GetValue(activeVillage, null);
+            return map?.GetType().GetProperty("BuildingsManagerMain")?.GetValue(map, null);
+        }
+
+        /// <summary>Count of placed buildings with this id (blueprints under
+        /// construction + completed), via BuildingsManagerMain.GetBuildingsCount.
+        /// Returns -1 when the map isn't ready. Counts by the SAME id string the
+        /// placer targets, so it self-limits bed placement without double-counting.</summary>
+        public static int CountBuildings(string id)
+        {
+            try
+            {
+                var bmm = GetBuildingsManager();
+                if (bmm == null) return -1;
+                var m = bmm.GetType().GetMethod("GetBuildingsCount", new[] { typeof(string) });
+                if (m == null) return -1;
+                return (int)m.Invoke(bmm, new object[] { id });
+            }
+            catch { return -1; }
+        }
+
+        /// <summary>True if a building with this blueprint id (blueprint under
+        /// construction OR finished) occupies this exact cell. World-truth
+        /// idempotency check — lets the builders SKIP pieces that already exist
+        /// in the loaded save instead of re-placing them (the save-bloat bug).
+        /// Returns false when the world isn't ready (callers then place normally,
+        /// gated by CanPlace as before).</summary>
+        public static bool BuildingExistsAt(int x, int y, int z, string id)
+        {
+            try
+            {
+                var bmm = GetBuildingsManager();
+                if (bmm == null) return false;
+                var cell = MakeVec3Int(x, y, z);
+                if (cell == null) return false;
+                // GetBuildings(Vec3Int) -> List<BaseBuildingInstance> (decompiled
+                // BuildingsManagerMain:1176); each instance's Blueprint.GetID() is
+                // the same id string the placers target.
+                var m = bmm.GetType().GetMethod("GetBuildings", new[] { _vec3IntType ?? (_vec3IntType = FindTypeByName("Vec3Int")) });
+                var list = m?.Invoke(bmm, new[] { cell }) as IEnumerable;
+                if (list == null) return false;
+                foreach (var inst in list)
+                {
+                    if (inst == null) continue;
+                    var bp = inst.GetType().GetProperty("Blueprint")?.GetValue(inst, null);
+                    string bid = null;
+                    try { bid = bp?.GetType().GetMethod("GetID")?.Invoke(bp, null) as string; } catch { }
+                    if (bid == id) return true;
+                }
+                return false;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>True if a stockpile ZONE occupies this cell — used to keep
+        /// building placement OFF storage zones.</summary>
+        public static bool IsOnStockpile(int x, int y, int z)
+        {
+            try
+            {
+                var mgr = GetLiveStockpileManager();
+                var exists = mgr?.GetType().GetMethod("StockpileExists");
+                var cell = MakeVec3Int(x, y, z);
+                if (exists == null || cell == null) return false;
+                return exists.Invoke(mgr, new[] { cell }) is bool b && b;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Stockpiles that VERIFY against their own manager</summary> — i.e. the
+        /// manager confirms StockpileExists at the instance's Start cell. The raw
+        /// Stockpiles count proved unreliable (a pooled/dead instance produced a
+        /// false 'stockpiles=1', which is why placement was session-flag-gated —
+        /// the reload-bloat bug). Verified instances are real, so the census can
+        /// safely gate placement again. Returns -1 when the manager isn't ready.</summary>
+        public static int CountVerifiedStockpiles()
+        {
+            try
+            {
+                var mgr = GetLiveStockpileManager();
+                if (mgr == null) return -1;
+                var sp = mgr.GetType().GetProperty("Stockpiles")?.GetValue(mgr, null) as IEnumerable;
+                var exists = mgr.GetType().GetMethod("StockpileExists");
+                if (sp == null || exists == null) return -1;
+                int c = 0, mbh = GetMapBlockHeight();
+                foreach (var inst in sp)
+                {
+                    var start = inst?.GetType().GetProperty("Start")?.GetValue(inst, null);
+                    if (start == null) continue;
+                    int sx = ReadIntField(start, "x", "X"), sy = ReadIntField(start, "y", "Y"), sz = ReadIntField(start, "z", "Z");
+                    // GOTCHA (live-verified): SpawnStockpile takes start.y in WORLD
+                    // units (level * MapBlockHeight) and the instance stores it that
+                    // way, but StockpileExists expects the LEVEL. Verifying at the
+                    // stored Start therefore always failed ('stockpiles=0' with two
+                    // real zones in the world — and the historic phantom-census
+                    // confusion). Check the stored y AND the level-converted y.
+                    bool ok = false;
+                    try { ok = exists.Invoke(mgr, new[] { start }) is bool b1 && b1; } catch { }
+                    if (!ok && mbh > 0 && sy % mbh == 0)
+                    {
+                        var lvl = MakeVec3Int(sx, sy / mbh, sz);
+                        try { ok = lvl != null && exists.Invoke(mgr, new[] { lvl }) is bool b2 && b2; } catch { }
+                    }
+                    if (ok) c++;
+                }
+                return c;
+            }
+            catch { return -1; }
         }
 
         /// <summary>True when this manager instance confirms one of its own

@@ -72,6 +72,60 @@ namespace GoingMedieval.LLM_NPCs
             DiscoverSelectionSystem();
         }
 
+        // ── LOAD GATE (root cause of the loading-screen hang) ─────────────────
+        // The game exposes its load pipeline state on the static
+        // NSMedieval.Controllers.LoadingController: IsLoadingComplete is set true
+        // only when InvokeLoadingCompleteEvent fires at the END of the whole load
+        // (ground truth: decompiled LoadingController). The mod used to start
+        // acting (designating trees, placing blueprints, forcing goals) as soon
+        // as settler objects EXISTED — which is mid-load, while the loader is
+        // still building slopes/meshes. Mutating world state in that window
+        // wedges the loader (Libury hung at 37.5%; a FRESH map hung at 'Loading
+        // Slopes' the same way). NOTHING may touch the world until this is true.
+        private static Type _loadingCtrlType;
+        private static PropertyInfo _isLoadingComplete, _isSceneTransition, _isLeavingMainScene;
+
+        /// <summary>True only when the game reports the load pipeline fully
+        /// finished and no scene transition is in progress. Fail-CLOSED: if the
+        /// controller can't be found, we report NOT ready and the mod stays idle.</summary>
+        public static bool IsWorldReady()
+        {
+            try
+            {
+                if (_loadingCtrlType == null)
+                {
+                    _loadingCtrlType = FindType("NSMedieval.Controllers.LoadingController");
+                    if (_loadingCtrlType == null)
+                    {
+                        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                        {
+                            try
+                            {
+                                foreach (var t in asm.GetTypes())
+                                    if (t.Name == "LoadingController" && t.FullName.StartsWith("NSMedieval"))
+                                    { _loadingCtrlType = t; break; }
+                            }
+                            catch { }
+                            if (_loadingCtrlType != null) break;
+                        }
+                    }
+                    if (_loadingCtrlType != null)
+                    {
+                        const BindingFlags SF = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+                        _isLoadingComplete = _loadingCtrlType.GetProperty("IsLoadingComplete", SF);
+                        _isSceneTransition = _loadingCtrlType.GetProperty("IsSceneTransition", SF);
+                        _isLeavingMainScene = _loadingCtrlType.GetProperty("IsLeavingMainScene", SF);
+                    }
+                }
+                if (_isLoadingComplete == null) return false;   // fail closed
+                if (!(bool)_isLoadingComplete.GetValue(null, null)) return false;
+                if (_isSceneTransition != null && (bool)_isSceneTransition.GetValue(null, null)) return false;
+                if (_isLeavingMainScene != null && (bool)_isLeavingMainScene.GetValue(null, null)) return false;
+                return true;
+            }
+            catch { return false; }                             // fail closed
+        }
+
         /// <summary>
         /// Gets all settler GameObjects currently in the scene.
         /// Uses caching to avoid expensive reflection every frame.
@@ -101,7 +155,6 @@ namespace GoingMedieval.LLM_NPCs
             if (results.Count == 0 && _individualWorkerType != null)
             {
                 var objects = SafeFindObjectsOfType(_individualWorkerType, "direct worker lookup");
-                LLMNPCsPlugin.LogToFile($"[GameBridge] FindObjectsOfType({_individualWorkerType.Name}) returned {objects.Length}");
 
                 var directMatches = new List<GameObject>();
                 foreach (var obj in objects)
@@ -827,14 +880,31 @@ namespace GoingMedieval.LLM_NPCs
         {
             var goapAgent = GetGoapAgent(runtimeComponent);
             if (goapAgent == null) return false;
-            
+
             var method = goapAgent.GetType().GetMethod("ForceNextGoalExclusive", BindingFlags.Public | BindingFlags.Instance);
-            if (method != null)
+            if (method == null) return false;
+            try
             {
-                method.Invoke(goapAgent, new object[] { goalId });
-                return true;
+                // ForceNextGoalExclusive returns the Goal it forced (null if the
+                // goalId isn't a real goal), so a non-null result == it actually
+                // took. This lets us discover valid goal ids at runtime.
+                var result = method.Invoke(goapAgent, new object[] { goalId });
+                return result != null;
             }
-            return false;
+            catch { return false; }
+        }
+
+        /// <summary>Force the settler to ACTUALLY go eat (walk to accessible food
+        /// and consume it) — the real action, not a hunger-stat cheat. Tries the
+        /// likely eat-goal ids and returns the one that took (or null). Food must
+        /// be un-forbidden and in supply for the goal to find a target.</summary>
+        public static string TryTriggerEat(GameObject settler)
+        {
+            if (!TryGetValidatedSettlerIdentity(settler, out _, out _, out var rc)) return null;
+            foreach (var g in new[] { "EatGoal", "HaveMealGoal", "EatMealGoal", "ConsumeGoal",
+                                      "ConsumeFoodGoal", "FeedGoal", "GetFoodGoal", "HungerGoal", "NourishGoal" })
+                if (ForceGoal(rc, g)) return g;
+            return null;
         }
 
         public static bool TryTriggerHaul(GameObject settler)

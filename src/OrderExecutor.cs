@@ -165,6 +165,10 @@ namespace GoingMedieval.LLM_NPCs
                     case "dump_character":
                         note = NPCContextExtractor.DumpCharacter(settler.gameObject);
                         break;
+                    case "build_building":
+                        var bldg = StockpilePlacer.TryPlaceBuildingNear(settler.gameObject, step.Value<string>("building") ?? "hay_sleeping_spot");
+                        if (bldg.StartsWith("ok")) note = bldg; else failure = bldg;
+                        break;
                     case "build_special":
                         DecisionExecutor.Execute(settler, MakeDecision("build_special",
                             new Dictionary<string, object> { { "building_name", step.Value<string>("building") ?? "" } },

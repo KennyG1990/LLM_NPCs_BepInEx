@@ -906,12 +906,25 @@ namespace GoingMedieval.LLM_NPCs
 
             GUILayout.Space(10);
 
-            GUILayout.Label($"Decision Interval: {_decisionIntervalConfig.Value:F1}s");
-            _decisionIntervalConfig.Value = GUILayout.HorizontalSlider(_decisionIntervalConfig.Value, 5f, 60f);
+            // Range is 60–600s (not 5–60): HorizontalSlider clamps the value into
+            // its range on EVERY render, so a 5–60 range silently forced the
+            // cost-tuned 300s interval back down to 60s just by opening this panel.
+            GUILayout.Label($"Decision Interval: {_decisionIntervalConfig.Value:F0}s  (higher = fewer LLM calls / lower cost)");
+            _decisionIntervalConfig.Value = GUILayout.HorizontalSlider(_decisionIntervalConfig.Value, 60f, 600f);
 
             GUILayout.Space(10);
 
             _enableModConfig.Value = GUILayout.Toggle(_enableModConfig.Value, "Enable Mod");
+
+            // The master switch for autonomous behavior — including the Strategic
+            // Model that builds the village on its own (stockpiles, beds). Off =
+            // NPCs only think/talk; On = they physically act on the world.
+            _enableFullAutonomyConfig.Value = GUILayout.Toggle(_enableFullAutonomyConfig.Value,
+                "Enable Full AI Autonomy (villagers build the village themselves)");
+            // Keep the runtime master switch in lock-step with the config so the
+            // Strategic Model reacts to this toggle immediately (no restart).
+            AutonomyManager.Instance.IsFullAutonomyEnabled = _enableFullAutonomyConfig.Value;
+
             _logDecisionsConfig.Value = GUILayout.Toggle(_logDecisionsConfig.Value, "Log Decisions");
 
             GUILayout.Space(20);

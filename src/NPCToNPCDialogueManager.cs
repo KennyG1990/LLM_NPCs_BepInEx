@@ -25,9 +25,12 @@ namespace GoingMedieval.LLM_NPCs
         private readonly Dictionary<string, DateTime> _lastConversationTime;
 
         // Configuration
-        private readonly float _conversationCooldown = 120f; // 2 minutes between conversations
+        // Settlers cluster together, so a short cooldown meant near-constant
+        // (multi-turn) LLM chatter — a major token sink. 15 min keeps occasional
+        // social flavour without the cost.
+        private readonly float _conversationCooldown = 900f; // 15 minutes between conversations
         private readonly float _maxConversationDistance = 5f;
-        private readonly int _maxExchanges = 4;
+        private readonly int _maxExchanges = 2; // was 4 (=8 LLM calls/convo); 2 keeps it short + cheap
 
         public NPCToNPCDialogueManager(
             LLMClient llmClient,
