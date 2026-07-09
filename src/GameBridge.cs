@@ -862,18 +862,48 @@ namespace GoingMedieval.LLM_NPCs
         public static object GetGoapAgent(Component runtimeComponent)
         {
             if (runtimeComponent == null) return null;
-            
-            object workerBehaviour = runtimeComponent;
-            if (runtimeComponent.GetType().FullName == "NSMedieval.State.HumanoidInstance")
+
+            // Ground truth (decompiled HumanoidInstance:546): the agent is
+            // CreatureBase.GoapAgent — a PROTECTED property on a BASE class,
+            // which plain GetProperty on the derived type does NOT return.
+            // Hierarchy-walk with DeclaredOnly (the codebase's known CRTP
+            // gotcha). Candidates: the component itself, its HumanoidInstance,
+            // and its WorkerBehaviour.
+            object HierarchyGet(object o, string name)
             {
-                workerBehaviour = NPCContextExtractor.GetPropertyValue<object>(runtimeComponent, "WorkerBehaviour") 
-                                  ?? NPCContextExtractor.GetFieldValue<object>(runtimeComponent, "workerBehaviour");
+                if (o == null) return null;
+                for (var t = o.GetType(); t != null; t = t.BaseType)
+                {
+                    var p = t.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                    if (p != null) { try { var v = p.GetValue(o, null); if (v != null) return v; } catch { } }
+                    var f = t.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                    if (f != null) { try { var v = f.GetValue(o); if (v != null) return v; } catch { } }
+                }
+                return null;
             }
-            
-            if (workerBehaviour == null) return null;
-            
-            return NPCContextExtractor.GetPropertyValue<object>(workerBehaviour, "WorkerGoapAgent") 
-                   ?? NPCContextExtractor.GetFieldValue<object>(workerBehaviour, "workerGoapAgent");
+
+            var candidates = new object[]
+            {
+                runtimeComponent,
+                HierarchyGet(runtimeComponent, "HumanoidInstance"),
+                HierarchyGet(runtimeComponent, "WorkerBehaviour") ?? HierarchyGet(runtimeComponent, "workerBehaviour"),
+            };
+            foreach (var c in candidates)
+            {
+                if (c == null) continue;
+                var agent = HierarchyGet(c, "GoapAgent")
+                         ?? HierarchyGet(c, "WorkerGoapAgent")
+                         ?? HierarchyGet(c, "workerGoapAgent");
+                if (agent != null) return agent;
+                // one more hop: candidate's WorkerBehaviour
+                var wb = HierarchyGet(c, "WorkerBehaviour");
+                if (wb != null)
+                {
+                    agent = HierarchyGet(wb, "GoapAgent") ?? HierarchyGet(wb, "WorkerGoapAgent");
+                    if (agent != null) return agent;
+                }
+            }
+            return null;
         }
 
         public static bool ForceGoal(Component runtimeComponent, string goalId)

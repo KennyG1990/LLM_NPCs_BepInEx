@@ -322,11 +322,14 @@ namespace GoingMedieval.LLM_NPCs
                             try { ok = (bool)canPlace.Invoke(bmm, new[] { blueprint, cell, (object)0, (object)true }); }
                             catch { ok = false; }
                             if (!ok) continue;
-                            // Never build ON a stockpile zone — CanPlace allows it
-                            // (zones aren't buildings) but it blocks storage cells
-                            // and looks idiotic (live bug: research table placed on
-                            // the stockpile). StockpileExists is the game's truth.
-                            if (IsOnStockpile(cx, ay, cz)) continue;
+                            // Never site furniture ON/BESIDE a stockpile zone or
+                            // loose piles — footprint-aware (live bug: research
+                            // table on the pile). House pieces use exact-cell.
+                            if (IsNearStockpileOrPiles(cx, ay, cz)) continue;
+                            // ...and never on a cell holding ANY building/blueprint
+                            // (live bug: table 'blocked by wooden door' — CanPlace
+                            // tolerated the door cell). Ground truth: BuildingExists.
+                            if (AnyBuildingAt(cx, ay, cz)) continue;
 
                             string commit = CommitPlayerBlueprint(map, bmm, blueprint, cell, 0);
                             if (commit != null) { LastBuildingDiag = commit; continue; } // this cell was blocked; try next
@@ -402,11 +405,46 @@ namespace GoingMedieval.LLM_NPCs
                 var listType = typeof(System.Collections.Generic.List<>).MakeGenericType(_vec3IntType);
                 var positions = Activator.CreateInstance(listType);
                 listType.GetMethod("Add").Invoke(positions, new[] { cell });
+                // MEASURED success (ground truth: CreateRoofs silently no-ops when
+                // DragSpawnRoof's SpawnFromPool returns null or CanPlaceRoof rejects
+                // — 'ok: invoked' was a LIE; roofs never landed, Ken saw rain on
+                // beds). Count RoofComponentManager instances before/after.
+                int before = CountRoofComponents();
                 try { method.Invoke(bpm, new[] { blueprint, cell, (object)0, scale, positions }); }
                 catch (Exception se) { return "SpawnRoofAutoTesting exc: " + (se.InnerException?.Message ?? se.Message); }
-                return $"ok: roof invoked @({cx},{cy},{cz})";
+                int after = CountRoofComponents();
+                if (after > before)
+                    return $"ok: roof PLACED @({cx},{cy},{cz}) (components {before}->{after})";
+                return $"roof REJECTED @({cx},{cy},{cz}) (components {before}->{after}: SpawnFromPool-null or CanPlaceRoof false)";
             }
             catch (Exception ex) { return "roof err: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>Count cached roof component instances — the MEASURED truth of
+        /// roof placement (Map.RoofComponentManager's instance collection).</summary>
+        private static int CountRoofComponents()
+        {
+            try
+            {
+                var vmType = FindType("NSMedieval.Village.VillageManager");
+                var activeVillage = vmType?.GetProperty("ActiveVillage",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+                var map = activeVillage?.GetType().GetProperty("Map")?.GetValue(activeVillage, null);
+                var rcm = map?.GetType().GetProperty("RoofComponentManager")?.GetValue(map, null);
+                if (rcm == null) return -1;
+                int best = 0;
+                for (var t = rcm.GetType(); t != null; t = t.BaseType)
+                    foreach (var f in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                    {
+                        object val; try { val = f.GetValue(rcm); } catch { continue; }
+                        if (val is string || !(val is IEnumerable en)) continue;
+                        int c = 0; bool roofish = false;
+                        foreach (var it in en) { c++; if (it != null && it.GetType().Name.Contains("Roof")) roofish = true; if (c > 4096) break; }
+                        if (roofish && c > best) best = c;
+                    }
+                return best;
+            }
+            catch { return -1; }
         }
 
         /// <summary>The settler's current grid node (x,y,z level) or null.</summary>
@@ -893,8 +931,11 @@ namespace GoingMedieval.LLM_NPCs
             catch { return false; }
         }
 
-        /// <summary>True if a stockpile ZONE occupies this cell — used to keep
-        /// building placement OFF storage zones.</summary>
+        /// <summary>True if a stockpile ZONE occupies EXACTLY this cell.
+        /// EXACT-cell semantics only (Ken visual-confirmed the bug: the old 3x3
+        /// neighborhood version false-positived on house walls merely ADJACENT
+        /// to a zone — red-circle-blocked walls beside a stockpile that was
+        /// clearly outside the building).</summary>
         public static bool IsOnStockpile(int x, int y, int z)
         {
             try
@@ -904,6 +945,37 @@ namespace GoingMedieval.LLM_NPCs
                 var cell = MakeVec3Int(x, y, z);
                 if (exists == null || cell == null) return false;
                 return exists.Invoke(mgr, new[] { cell }) is bool b && b;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Footprint-aware variant for SITE SEARCH of multi-cell
+        /// furniture (research table on the pile, live bug ×2): zone in the
+        /// 3x3 neighborhood OR loose ground piles within 1 cell.</summary>
+        public static bool IsNearStockpileOrPiles(int x, int y, int z)
+        {
+            try
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++)
+                        if (IsOnStockpile(x + dx, y, z + dz)) return true;
+                return ResourceUnforbidder.AnyPileAt(x, y, z, 1);
+            }
+            catch { return false; }
+        }
+
+        /// <summary>True if ANY building/blueprint occupies this cell — conflict
+        /// guard so two different pieces (wall + door) can never stack on one
+        /// cell (live bug: overlapping blueprints during reload churn).</summary>
+        public static bool AnyBuildingAt(int x, int y, int z)
+        {
+            try
+            {
+                var bmm = GetBuildingsManager();
+                var cell = MakeVec3Int(x, y, z);
+                if (bmm == null || cell == null) return false;
+                var m = bmm.GetType().GetMethod("BuildingExists", new[] { _vec3IntType ?? (_vec3IntType = FindTypeByName("Vec3Int")) });
+                return m != null && m.Invoke(bmm, new[] { cell }) is bool b && b;
             }
             catch { return false; }
         }

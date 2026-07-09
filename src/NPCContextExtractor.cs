@@ -163,7 +163,79 @@ namespace GoingMedieval.LLM_NPCs
                     }
                 }
 
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractHealth] Mood: {context.Mood}, Score: {context.MoodScore}, Effectors: {context.MoodLogs.Count}");
+                // EQUIPMENT: weapon + everything worn/carried (GetWeapon /
+                // GetEquipment on HumanoidInstance) — combat identity for the
+                // LLM ("I am an archer without a bow" should be thinkable).
+                try
+                {
+                    var getWeapon = humanoidInstance.GetType().GetMethod("GetWeapon", Type.EmptyTypes);
+                    var w = getWeapon?.Invoke(humanoidInstance, null);
+                    if (w != null)
+                    {
+                        var bpw = GetPropertyValue<object>(w, "Blueprint") ?? GetFieldValue<object>(w, "blueprint");
+                        context.Weapon = (bpw?.GetType().GetMethod("GetID")?.Invoke(bpw, null) as string) ?? w.ToString();
+                    }
+                    else context.Weapon = "unarmed";
+                    var getEq = humanoidInstance.GetType().GetMethod("GetEquipment", Type.EmptyTypes);
+                    if (getEq?.Invoke(humanoidInstance, null) is System.Collections.IEnumerable eqs)
+                    {
+                        context.Equipment = context.Equipment ?? new EquipmentContext();
+                        context.Equipment.Weapon = context.Weapon;
+                        foreach (var eq in eqs)
+                        {
+                            if (eq == null) continue;
+                            var bpe = GetPropertyValue<object>(eq, "Blueprint") ?? GetFieldValue<object>(eq, "blueprint");
+                            var eid = bpe?.GetType().GetMethod("GetID")?.Invoke(bpe, null) as string;
+                            if (eid == null) continue;
+                            if (eid.IndexOf("helmet", StringComparison.OrdinalIgnoreCase) >= 0 || eid.IndexOf("cap", StringComparison.OrdinalIgnoreCase) >= 0 || eid.IndexOf("hat", StringComparison.OrdinalIgnoreCase) >= 0)
+                                context.Equipment.Helmet = eid;
+                            else if (eid.IndexOf("armor", StringComparison.OrdinalIgnoreCase) >= 0 || eid.IndexOf("armour", StringComparison.OrdinalIgnoreCase) >= 0 || eid.IndexOf("mail", StringComparison.OrdinalIgnoreCase) >= 0 || eid.IndexOf("gambeson", StringComparison.OrdinalIgnoreCase) >= 0)
+                                context.Equipment.Armor = eid;
+                            else
+                                context.Equipment.Clothing = string.IsNullOrEmpty(context.Equipment.Clothing) ? eid : context.Equipment.Clothing + ", " + eid;
+                        }
+                    }
+                }
+                catch { }
+
+                // SCHEDULE: compress the 24h HourType[] into a readable summary.
+                try
+                {
+                    if (GetPropertyValue<object>(humanoidInstance, "ScheduleHours") is System.Collections.IEnumerable hours)
+                    {
+                        var sbs = new System.Text.StringBuilder(); int h = 0; string prev = null; int runStart = 0;
+                        var arr = new List<string>();
+                        foreach (var hv in hours) arr.Add(hv?.ToString() ?? "?");
+                        for (int hh = 0; hh < arr.Count; hh++) context.Schedule[hh.ToString()] = arr[hh];
+                        for (h = 0; h <= arr.Count; h++)
+                        {
+                            var cur = h < arr.Count ? arr[h] : null;
+                            if (cur != prev)
+                            {
+                                if (prev != null) sbs.Append($"{runStart:00}-{h:00} {prev}; ");
+                                prev = cur; runStart = h;
+                            }
+                        }
+                        context.ScheduleSummary = sbs.ToString();
+                    }
+                }
+                catch { }
+
+                // RELIGION: alignment scalar + religion id (hierarchy-walked;
+                // fields live on HumanoidInstance per assembly surface).
+                try
+                {
+                    var relAlign = GetFieldValue<object>(humanoidInstance, "religiousAlignment")
+                                ?? GetFieldValue<object>(humanoidInstance, "religionAlignment")
+                                ?? GetPropertyValue<object>(humanoidInstance, "ReligiousAlignment");
+                    if (relAlign != null) context.ReligiousAlignment = Convert.ToSingle(relAlign);
+                    context.Religion = GetFieldValue<string>(humanoidInstance, "religionId")
+                                    ?? GetPropertyValue<string>(humanoidInstance, "ReligionId")
+                                    ?? "";
+                }
+                catch { }
+
+                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractHealth] Mood: {context.Mood}, Score: {context.MoodScore}, Effectors: {context.MoodLogs.Count}, Religion: {context.Religion}/{context.ReligiousAlignment:F2}");
             }
             catch (Exception ex)
             {
@@ -1157,6 +1229,17 @@ namespace GoingMedieval.LLM_NPCs
         [JsonProperty("health")] public HealthContext Health { get; set; }
         [JsonProperty("mood")] public string Mood { get; set; }
         [JsonProperty("mood_score")] public float MoodScore { get; set; }
+        // RELIGION (Ken: schism endgame fuel — villages arguing about faith).
+        // Game surface: HumanoidInstance religiousAlignment / religionId.
+        [JsonProperty("religion")] public string Religion { get; set; }
+        [JsonProperty("religious_alignment")] public float ReligiousAlignment { get; set; }
+        // IDENTITY GAPS (Ken: character sheet missing what they FIGHT WITH,
+        // what they CARRY, and their JOB PRIORITIES — the LLM can't want what
+        // its context doesn't show). HumanoidInstance.GetWeapon/GetEquipment.
+        [JsonProperty("weapon")] public string Weapon { get; set; }
+        // (Equipment list already defined below — extractor now fills it.)
+        [JsonProperty("schedule_summary")] public string ScheduleSummary { get; set; }
+        [JsonProperty("schedule")] public Dictionary<string, string> Schedule { get; set; } = new Dictionary<string, string>();
         [JsonProperty("vitals")] public Dictionary<string, string> Vitals { get; set; }
         [JsonProperty("states")] public List<string> States { get; set; }
         [JsonProperty("needs")] public NeedsContext Needs { get; set; }

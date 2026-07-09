@@ -222,6 +222,10 @@ namespace GoingMedieval.LLM_NPCs
                 var c = _doorCells[_doorIdx++];
                 string which = _doorIdx == 1 ? "exterior" : "connecting";
                 if (StockpilePlacer.BuildingExistsAt(c[0], _ay, c[1], Door)) continue;
+                // conflict guard: NEVER stack a door onto a cell holding any
+                // other piece (a wall etc.) — skip and log instead.
+                if (StockpilePlacer.AnyBuildingAt(c[0], _ay, c[1]))
+                { LLMNPCsPlugin.LogToFile($"[HouseBuilder] door cell ({c[0]},{_ay},{c[1]}) occupied by another building — SKIPPED (conflict guard)"); continue; }
                 LastStep = $"house {which} door: {StockpilePlacer.TryPlaceBuildingAt(c[0], _ay, c[1], Door)}";
                 return LastStep;
             }

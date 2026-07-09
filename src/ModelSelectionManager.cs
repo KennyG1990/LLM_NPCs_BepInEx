@@ -163,9 +163,8 @@ namespace GoingMedieval.LLM_NPCs
             // Context length
             GUI.Label(new Rect(310, y + 5, 80, 20), $"{model.ContextLength}");
 
-            // Price
-            string price = model.IsFree ? "FREE" : $"${model.PricingPrompt}";
-            GUI.Label(new Rect(400, y + 5, 80, 20), price);
+            // Price per 1M tokens (prompt/completion) — budgetable numbers
+            GUI.Label(new Rect(400, y + 5, 140, 20), model.PricePerMillion);
 
             // Select button
             if (!isSelected)

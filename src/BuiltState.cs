@@ -69,6 +69,12 @@ namespace GoingMedieval.LLM_NPCs
             WoodGatherer.Reset();
             FoodGatherer.Reset();
             CellarBuilder.Reset();
+            ResearchPlanner.Reset();
+            ProductionPlanner.Reset();
+            FarmPlanner.Reset();
+            JobRouter.Reset();
+            StockpileZoner.Reset();
+            ScheduleRouter.Reset();
         }
 
         private static object GetActiveVillage()
@@ -129,6 +135,20 @@ namespace GoingMedieval.LLM_NPCs
         {
             get { return TryInt("house.roofs", out var n) ? n : 0; }
             set { _kv["house.roofs"] = value.ToString(); Persist(); }
+        }
+
+        /// <summary>True when this building id was observed NO-SKILLED-WORKER —
+        /// stop re-placing what the crew cannot build (blueprint churn fix).</summary>
+        public static bool SkillBlocked(string id)
+        { return _kv.TryGetValue("skillblocked." + id, out var v) && v == "1"; }
+        public static void SetSkillBlocked(string id)
+        { _kv["skillblocked." + id] = "1"; Persist(); }
+
+        /// <summary>One 4x4 crop field per save (sustainable food).</summary>
+        public static bool FarmPlaced
+        {
+            get { return _kv.TryGetValue("farm.placed", out var v) && v == "1"; }
+            set { _kv["farm.placed"] = value ? "1" : "0"; Persist(); }
         }
 
         /// <summary>One cellar dig designated per save (underground food storage).</summary>

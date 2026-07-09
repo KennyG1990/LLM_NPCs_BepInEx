@@ -278,6 +278,23 @@ namespace GoingMedieval.LLM_NPCs
                         sb.AppendLine($"- WARNING: {context.Environment.NearbyThreats.Count} threat(s) nearby!");
                     }
                     sb.AppendLine();
+                    // PERSONAL LOG (Ken): the settler's lived experience — the same
+                    // entries the player reads in the LOG tab ("Slept in the Rain",
+                    // "got heated conversing with..."). Framed as autobiography so
+                    // the LLM reacts as a PERSON, then asked the player's question.
+                    var recentLife = new List<string>();
+                    if (context.MoodLogs != null) recentLife.AddRange(context.MoodLogs);
+                    if (context.SocialLogs != null) recentLife.AddRange(context.SocialLogs);
+                    if (context.BeliefLogs != null) recentLife.AddRange(context.BeliefLogs);
+                    if (recentLife.Count > 0)
+                    {
+                        sb.AppendLine("=== YOUR RECENT LIFE (your personal log — these things HAPPENED TO YOU) ===");
+                        int take = Math.Min(10, recentLife.Count);
+                        for (int i = recentLife.Count - take; i < recentLife.Count; i++)
+                            sb.AppendLine($"- {recentLife[i]}");
+                        sb.AppendLine("Given everything above — your body, your colony, and what you have lived through — what do you do?");
+                        sb.AppendLine();
+                    }
                     // PRIORITY: the whole colony's urgent needs — the settler should
                     // weigh these heavily (a starving, shelterless colony needs food
                     // and building far more than personal errands).

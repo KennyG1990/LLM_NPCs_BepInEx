@@ -24,6 +24,7 @@ def _load_sibling_module(name):
 
 gm_systems = _load_sibling_module("gm_systems")
 gm_devops = _load_sibling_module("gm_devops")
+gm_plans = _load_sibling_module("gm_plans")     # task #25: plans/laws persistence
 
 class _GmCtx:
     """Late-bound view of this module's globals for gm_systems, robust to
@@ -1587,6 +1588,47 @@ def check_player2_health():
         return {"online": False, "port": port, "error": str(e)}
     return {"online": False, "port": port}
 
+def player2_probe(method, path, timeout=5):
+    """Neural-link pattern (x4_neural_link/bridge/player2_client.py probe_json):
+    every probe -> {ok, status_code, latency_ms} against the live daemon."""
+    import time as _t
+    port = get_player2_port()
+    start = _t.time()
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", method=method)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            return {"endpoint": path, "method": method, "ok": True,
+                    "status_code": resp.status,
+                    "latency_ms": int((_t.time() - start) * 1000),
+                    "bytes": len(raw)}
+    except urllib.error.HTTPError as exc:
+        return {"endpoint": path, "method": method, "ok": False,
+                "status_code": exc.code,
+                "latency_ms": int((_t.time() - start) * 1000),
+                "error": f"HTTP {exc.code}"}
+    except Exception as exc:
+        return {"endpoint": path, "method": method, "ok": False, "status_code": None,
+                "latency_ms": int((_t.time() - start) * 1000), "error": str(exc)[:200]}
+
+# The FULL Player2 surface (mirrors x4_neural_link run_probe_suite).
+PLAYER2_SURFACE = [
+    ("GET", "/v1/health"), ("GET", "/v1/models"), ("GET", "/v1/selected_characters"),
+    ("GET", "/v1/openapi.json"), ("GET", "/v1/npc/openapi.json"), ("GET", "/v1/ai_profiles"),
+    ("GET", "/v1/joules"), ("GET", "/v1/stt/languages"), ("GET", "/v1/stt/language"),
+    ("GET", "/v1/stt/whisper/models"), ("GET", "/v1/tts/voices"),
+    ("GET", "/v1/tts/eleven/models"), ("GET", "/v1/tts/eleven/user"),
+]
+
+# EXPRESSLY STATED (Ken): every Player2 function the MOD calls, with call site.
+PLAYER2_CALLS_USED = [
+    {"endpoint": "/v1/health", "method": "GET", "caller": "LLMClient.CheckHealthAsync", "purpose": "daemon liveness gate before decisions"},
+    {"endpoint": "/v1/npc/games/{gameId}/npcs/spawn", "method": "POST", "caller": "LLMClient (GetOrCreateNpcId path)", "purpose": "register settler as Player2 NPC persona"},
+    {"endpoint": "/v1/npc/games/{gameId}/npcs/responses", "method": "GET(stream)", "caller": "LLMClient.NpcChatAsync", "purpose": "streamed NPC responses"},
+    {"endpoint": "/v1/npc/games/{gameId}/npcs/{npcId}/chat", "method": "POST", "caller": "LLMClient.NpcChatAsync", "purpose": "decisions + dialogue (the main spend)"},
+    {"endpoint": "/v1/chat/completions", "method": "POST", "caller": "LLMClient (x2 call sites)", "purpose": "raw completions (summaries/utility)"},
+]
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def _send_json(self, status, payload):
         body = json.dumps(payload, indent=2).encode('utf-8')
@@ -1637,6 +1679,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         # API Endpoints
+        if path == "/api/player2/surface":
+            # Full Player2 API surface, live-probed (neural-link pattern) +
+            # the expressly-stated inventory of endpoints the mod calls.
+            self._send_json(200, {
+                "ok": True,
+                "port": get_player2_port(),
+                "surface": [player2_probe(m, p) for m, p in PLAYER2_SURFACE],
+                "calls_used_by_mod": PLAYER2_CALLS_USED,
+            })
+            return
         if path == "/health":
             p2_status = check_player2_health()
             self._send_json(200, {
@@ -2019,6 +2071,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 # Assemble base context
                 sb = []
                 max_chars = max_tokens * 4
+
+                # 0. RoleRAG FIRST (graph-retrieved knowledge + boundaries are
+                # the highest-value lines; appending them last put them under
+                # the max_chars guillotine — live repro: 6400-char cutoff).
+                try:
+                    import gm_rolerag
+                    rr = gm_rolerag.build_context_block(conn, save_id, npc_id, search_query or "")
+                    if rr:
+                        sb.append(rr)
+                        sb.append("")
+                except Exception as _rr_e:
+                    sb.append(f"(rolerag unavailable: {_rr_e})")
                 
                 if profile_row:
                     sb.append("=== PERSONAL FILE ===")
@@ -2121,30 +2185,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             conn.execute("UPDATE typed_memories SET last_used_at = ? WHERE id = ?", (datetime.utcnow().timestamp(), m["id"]))
                         sb.append("")
 
-                # 5. RoleRAG (Encyclopedia context)
-                if role:
-                    role_lower = role.lower()
-                    # Map roles to lore keys
-                    role_map = {
-                        "farmer": ["farming", "cooking"],
-                        "woodcutter": ["winter", "farming"],
-                        "guard": ["combat", "health"],
-                        "scholar": ["health", "building"],
-                        "builder": ["building", "mining"],
-                        "miner": ["mining", "winter"]
-                    }
-                    keys = role_map.get(role_lower, [role_lower])
-                    placeholders = ",".join("?" for _ in keys)
-                    lore_cursor = conn.execute(
-                        f"SELECT title, text FROM lore WHERE kind = 'encyclopedia' AND key IN ({placeholders})",
-                        keys
-                    )
-                    lore_items = [dict(r) for r in lore_cursor]
-                    if lore_items:
-                        sb.append("=== ENCYCLOPEDIA CONTEXT (RoleRAG) ===")
-                        for l in lore_items:
-                            sb.append(f"[{l['title']}]\n{l['text']}")
-                        sb.append("")
+                # 5. (RoleRAG moved to section 0 — see max_chars guillotine note.)
                 
                 context_str = "\n".join(sb)
                 if len(context_str) > max_chars:
@@ -2160,6 +2201,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if gm_systems.dispatch(self, GM_CTX, "GET", path, query=query, payload=None):
             return
         if gm_devops.dispatch(self, GM_CTX, "GET", path, query=query, payload=None):
+            return
+        if gm_plans.dispatch(self, GM_CTX, "GET", path, query=query, payload=None):
             return
         self._send_json(404, {"error": "not found"})
 
@@ -3169,6 +3212,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if gm_systems.dispatch(self, GM_CTX, "POST", path, query=None, payload=payload):
             return
         if gm_devops.dispatch(self, GM_CTX, "POST", path, query=None, payload=payload):
+            return
+        if gm_plans.dispatch(self, GM_CTX, "POST", path, query=None, payload=payload):
             return
         self._send_json(404, {"error": "not found"})
 

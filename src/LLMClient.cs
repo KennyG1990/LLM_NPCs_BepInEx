@@ -17,7 +17,7 @@ namespace GoingMedieval.LLM_NPCs
     public class LLMClient : IDisposable
     {
         private readonly HttpClient _httpClient;
-        private readonly string _baseUrl;
+        private string _baseUrl;   // mutable: live provider switching (Reconfigure)
         private readonly string _gameClientId;
         private readonly float _temperature;
         private readonly SemaphoreSlim _npcChatLock = new SemaphoreSlim(1, 1);
@@ -66,15 +66,74 @@ namespace GoingMedieval.LLM_NPCs
                 LLMNPCsPlugin.LogToFile($"[LLMClient] Failed to read Player2 port file, using default 4315: {ex.Message}");
             }
 
-            _baseUrl = $"http://127.0.0.1:{port}";
             _gameClientId = "going_medieval";
-
             _httpClient = new HttpClient();
             _httpClient.Timeout = TimeSpan.FromSeconds(60);
-            _httpClient.DefaultRequestHeaders.Add("player2-game-key", _gameClientId);
-            _httpClient.DefaultRequestHeaders.Add("X-Game-Client-Id", _gameClientId);
 
-            LLMNPCsPlugin.LogToFile($"[LLMClient:Constructor] Initialized Player2 client at {_baseUrl}");
+            // PROVIDER SELECTOR (Ken: Player2 joules ran dry — OpenRouter as
+            // configurable backup; the reference docs promise bring-your-own
+            // backend anyway). OpenRouter is OpenAI-schema at /api/v1/..., so
+            // the existing $"{_baseUrl}/v1/chat/completions" paths just work.
+            if (Provider == "openrouter" && !string.IsNullOrEmpty(OpenRouterApiKey))
+            {
+                _baseUrl = "https://openrouter.ai/api";
+                _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + OpenRouterApiKey);
+                LLMNPCsPlugin.LogToFile($"[LLMClient:Constructor] Provider=OPENROUTER model={OpenRouterModel}");
+            }
+            else
+            {
+                _baseUrl = $"http://127.0.0.1:{port}";
+                _httpClient.DefaultRequestHeaders.Add("player2-game-key", _gameClientId);
+                _httpClient.DefaultRequestHeaders.Add("X-Game-Client-Id", _gameClientId);
+                LLMNPCsPlugin.LogToFile($"[LLMClient:Constructor] Provider=PLAYER2 at {_baseUrl}");
+            }
+        }
+
+        // ── CALL BUDGET GOVERNOR (task #23 EMERGENCY: 1,792 calls / $222 /
+        // 4.45M tokens burned in one run). ONE choke point for every paid
+        // call (chat, simple, raw). Sliding 1h window; suppressed calls return
+        // null and every caller already has a deterministic fallback (decision
+        // fallbacks, skipped dialogue). Tune via MaxCallsPerHour.
+        public static int MaxCallsPerHour = 8;
+        // Provider selection (set from Plugin config BEFORE constructing).
+        public static string Provider = "player2";           // "player2" | "openrouter"
+        public static string OpenRouterApiKey = "";
+        public static string OpenRouterModel = "openai/gpt-oss-120b";
+        // PER-TASK MODEL ROUTING (Ken): applies on the OpenRouter provider —
+        // Player2's daemon owns its own endpoint model, so tasks can't split
+        // there. Keys: npc_decisions | player_chat | npc_to_npc | planner |
+        // chronicle. Empty/missing -> the panel-selected OpenRouterModel.
+        public static readonly Dictionary<string, string> TaskModels = new Dictionary<string, string>();
+        public static string ModelForTask(string task)
+        {
+            if (!string.IsNullOrEmpty(task) && TaskModels.TryGetValue(task, out var m) && !string.IsNullOrWhiteSpace(m) && m != "player2")
+                return m;
+            return OpenRouterModel;
+        }
+        // OpenRouter has no NPC-persona server; personas live HERE per npc.
+        private static readonly System.Collections.Generic.Dictionary<string, string> _personas
+            = new System.Collections.Generic.Dictionary<string, string>();
+        private static readonly System.Collections.Generic.Queue<DateTime> _spend = new System.Collections.Generic.Queue<DateTime>();
+        private static readonly object _spendLock = new object();
+        public static int SuppressedCount = 0;
+
+        private static bool TrySpendBudget(string what)
+        {
+            lock (_spendLock)
+            {
+                var cutoff = DateTime.UtcNow.AddHours(-1);
+                while (_spend.Count > 0 && _spend.Peek() < cutoff) _spend.Dequeue();
+                if (_spend.Count >= MaxCallsPerHour)
+                {
+                    SuppressedCount++;
+                    if (SuppressedCount % 10 == 1)
+                        LLMNPCsPlugin.LogToFile($"[LLMClient] BUDGET: suppressed '{what}' ({_spend.Count}/{MaxCallsPerHour} used this hour, {SuppressedCount} suppressed total) — deterministic fallbacks take over");
+                    return false;
+                }
+                _spend.Enqueue(DateTime.UtcNow);
+                LLMNPCsPlugin.LogToFile($"[LLMClient] BUDGET: spend {_spend.Count}/{MaxCallsPerHour} ({what})");
+                return true;
+            }
         }
 
         /// <summary>
@@ -84,6 +143,8 @@ namespace GoingMedieval.LLM_NPCs
         {
             try
             {
+                if (Provider == "openrouter")
+                    return !string.IsNullOrEmpty(OpenRouterApiKey);   // no /health endpoint upstream
                 var response = await _httpClient.GetAsync($"{_baseUrl}/v1/health");
                 return response.IsSuccessStatusCode;
             }
@@ -98,6 +159,14 @@ namespace GoingMedieval.LLM_NPCs
         /// </summary>
         public async Task<string> SpawnNpcAsync(string settlerId, string npcName, string npcProfession, string systemPrompt)
         {
+            if (Provider == "openrouter")
+            {
+                // No server-side personas on OpenRouter: keep it locally and use
+                // the settlerId as the npc id. Chat assembles it per call.
+                lock (_personas) { _personas[settlerId] = systemPrompt ?? ""; }
+                LLMNPCsPlugin.LogToFile($"[LLMClient] (openrouter) persona registered locally for {npcName}");
+                return settlerId;
+            }
             var url = $"{_baseUrl}/v1/npc/games/{_gameClientId}/npcs/spawn";
             
             // Build command whitelists for Player2 bounding
@@ -226,8 +295,11 @@ namespace GoingMedieval.LLM_NPCs
         /// <summary>
         /// Sends a chat message to a spawned Player2 NPC and parses the NDJSON streamed response.
         /// </summary>
-        public async Task<NpcResponse> NpcChatAsync(string npcId, string senderName, string senderMessage, string gameStateInfo)
+        public async Task<NpcResponse> NpcChatAsync(string npcId, string senderName, string senderMessage, string gameStateInfo, string task = "npc_decisions")
         {
+            if (!TrySpendBudget(task)) return null;   // governor: callers fall back
+            if (Provider == "openrouter")
+                return await OpenRouterNpcChatAsync(npcId, senderName, senderMessage, gameStateInfo, task);
             await _npcChatLock.WaitAsync();
             try
             {
@@ -300,8 +372,65 @@ namespace GoingMedieval.LLM_NPCs
         /// <summary>
         /// Sends a raw chat completion request using Player2 alternative OpenAI endpoint format.
         /// </summary>
-        public async Task<string> SendSimplePromptAsync(string prompt, LLMTraceMetadata traceMetadata = null)
+        /// <summary>OpenRouter NPC chat: persona (local) + game state as system,
+        /// message as user; model instructed to answer as strict JSON
+        /// {message, command:{name, args}} matching the command whitelist the
+        /// decision prompts already describe. Parsed into NpcResponse.</summary>
+        private async Task<NpcResponse> OpenRouterNpcChatAsync(string npcId, string senderName, string senderMessage, string gameStateInfo, string task = "npc_decisions")
         {
+            try
+            {
+                string persona;
+                lock (_personas) { _personas.TryGetValue(npcId, out persona); }
+                var system = (persona ?? "You are a medieval settler.")
+                    + "\n\nCURRENT GAME STATE (JSON):\n" + (gameStateInfo ?? "{}")
+                    + "\n\nRespond ONLY with strict JSON: {\"message\": \"your in-character words\", "
+                    + "\"command\": {\"name\": \"<one command name from the options in the user message, or continue_job>\", \"args\": {}}}";
+                var payload = new JObject
+                {
+                    ["model"] = ModelForTask(task),
+                    ["messages"] = new JArray
+                    {
+                        new JObject { ["role"] = "system", ["content"] = system },
+                        new JObject { ["role"] = "user", ["content"] = $"[{senderName}] {senderMessage}" }
+                    },
+                    ["stream"] = false,
+                    ["temperature"] = _temperature,
+                    ["max_tokens"] = 400
+                };
+                var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
+                var resp = await _httpClient.PostAsync($"{_baseUrl}/v1/chat/completions", content);
+                var body = await resp.Content.ReadAsStringAsync();
+                if (!resp.IsSuccessStatusCode)
+                {
+                    LLMNPCsPlugin.LogToFile($"[LLMClient] openrouter chat HTTP {(int)resp.StatusCode}: {body.Substring(0, Math.Min(200, body.Length))}");
+                    return null;
+                }
+                var text = JObject.Parse(body)?["choices"]?[0]?["message"]?["content"]?.ToString() ?? "";
+                // tolerate fenced or prefixed JSON
+                int s0 = text.IndexOf('{');
+                int s1 = text.LastIndexOf('}');
+                if (s0 >= 0 && s1 > s0)
+                {
+                    try
+                    {
+                        var j = JObject.Parse(text.Substring(s0, s1 - s0 + 1));
+                        return new NpcResponse { Message = j["message"]?.ToString() ?? text, Command = j["command"] };
+                    }
+                    catch { }
+                }
+                return new NpcResponse { Message = text, Command = null };
+            }
+            catch (Exception ex)
+            {
+                LLMNPCsPlugin.LogToFile("[LLMClient] openrouter chat EXC: " + ex.Message);
+                return null;
+            }
+        }
+
+        public async Task<string> SendSimplePromptAsync(string prompt, LLMTraceMetadata traceMetadata = null, string task = "npc_to_npc")
+        {
+            if (!TrySpendBudget(task)) return null;   // governor
             var url = $"{_baseUrl}/v1/chat/completions";
             var messages = new JArray
             {
@@ -316,6 +445,7 @@ namespace GoingMedieval.LLM_NPCs
                 ["temperature"] = _temperature,
                 ["max_tokens"] = 256
             };
+            if (Provider == "openrouter") payload["model"] = ModelForTask(task);   // required upstream
 
             var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync(url, content);
@@ -336,8 +466,9 @@ namespace GoingMedieval.LLM_NPCs
             return null;
         }
 
-        public async Task<string> GetRawResponseAsync(List<Message> messages, LLMTraceMetadata traceMetadata = null)
+        public async Task<string> GetRawResponseAsync(List<Message> messages, LLMTraceMetadata traceMetadata = null, string task = "npc_to_npc")
         {
+            if (!TrySpendBudget(task)) return null;   // governor
             var url = $"{_baseUrl}/v1/chat/completions";
             var msgArray = new JArray();
             foreach (var msg in messages)
@@ -352,6 +483,7 @@ namespace GoingMedieval.LLM_NPCs
                 ["temperature"] = _temperature,
                 ["max_tokens"] = 256
             };
+            if (Provider == "openrouter") payload["model"] = ModelForTask(task);   // required upstream
 
             var content = new StringContent(payload.ToString(), Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync(url, content);
@@ -380,13 +512,98 @@ namespace GoingMedieval.LLM_NPCs
             return Task.FromResult(new List<OpenRouterModel> { new OpenRouterModel { Id = "player2", Name = "Player2 Model", IsFree = true } });
         }
 
+        /// <summary>Real model list: Player2 entry + the OpenRouter catalog
+        /// (public endpoint; key only needed for chat). The in-game panel's
+        /// 'Fetch Models from OpenRouter' button lands here — no config-file
+        /// editing (Ken). Selecting a model switches provider live.</summary>
         public async Task<List<OpenRouterModel>> FetchAvailableModelsAsync()
         {
-            return await GetAvailableModelsAsync();
+            var list = new List<OpenRouterModel> { new OpenRouterModel { Id = "player2", Name = "Player2 Model (local daemon)", IsFree = true } };
+            try
+            {
+                using (var req = new HttpRequestMessage(HttpMethod.Get, "https://openrouter.ai/api/v1/models"))
+                {
+                    var resp = await _httpClient.SendAsync(req);
+                    var body = await resp.Content.ReadAsStringAsync();
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        var data = JObject.Parse(body)?["data"] as JArray;
+                        if (data != null)
+                            foreach (var m in data)
+                            {
+                                var promptPrice = m["pricing"]?["prompt"]?.ToString() ?? "0";
+                                var completionPrice = m["pricing"]?["completion"]?.ToString() ?? "0";
+                                list.Add(new OpenRouterModel
+                                {
+                                    Id = m["id"]?.ToString(),
+                                    Name = m["name"]?.ToString() ?? m["id"]?.ToString(),
+                                    ContextLength = m["context_length"]?.ToObject<int>() ?? 4096,
+                                    PricingPrompt = promptPrice,
+                                    PricingCompletion = completionPrice,
+                                    IsFree = promptPrice == "0" || (m["id"]?.ToString() ?? "").EndsWith(":free")
+                                });
+                            }
+                        LLMNPCsPlugin.LogToFile($"[LLMClient] fetched {list.Count - 1} OpenRouter models");
+                    }
+                    else LLMNPCsPlugin.LogToFile($"[LLMClient] OpenRouter models HTTP {(int)resp.StatusCode}");
+                }
+            }
+            catch (Exception ex) { LLMNPCsPlugin.LogToFile("[LLMClient] model fetch EXC: " + ex.Message); }
+            return list;
         }
 
-        public string GetCurrentModel() => "player2";
-        public void SetModel(string modelId) { }
+        public string GetCurrentModel() => Provider == "openrouter" ? OpenRouterModel : "player2";
+
+        /// <summary>Switch provider LIVE from the in-game panel: 'player2' id
+        /// selects the local daemon; any other id selects OpenRouter with that
+        /// model. Rebuilds base URL + auth headers in place.</summary>
+        public void SetModel(string modelId)
+        {
+            if (string.IsNullOrEmpty(modelId)) return;
+            if (modelId == "player2")
+            {
+                Provider = "player2";
+            }
+            else
+            {
+                Provider = "openrouter";
+                OpenRouterModel = modelId;
+                OpenRouterApiKey = (LLMNPCsPlugin.Instance?.ApiKey?.Value ?? OpenRouterApiKey ?? "").Trim();
+            }
+            Reconfigure();
+            LLMNPCsPlugin.LogToFile($"[LLMClient] SetModel -> provider={Provider} model={GetCurrentModel()} keySet={!string.IsNullOrEmpty(OpenRouterApiKey)}");
+        }
+
+        /// <summary>Re-point base URL + auth headers after a live provider switch.</summary>
+        private void Reconfigure()
+        {
+            _httpClient.DefaultRequestHeaders.Remove("Authorization");
+            _httpClient.DefaultRequestHeaders.Remove("player2-game-key");
+            _httpClient.DefaultRequestHeaders.Remove("X-Game-Client-Id");
+            if (Provider == "openrouter" && !string.IsNullOrEmpty(OpenRouterApiKey))
+            {
+                _baseUrl = "https://openrouter.ai/api";
+                _httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer " + OpenRouterApiKey);
+            }
+            else
+            {
+                Provider = "player2";
+                _baseUrl = $"http://127.0.0.1:{ReadPlayer2Port()}";
+                _httpClient.DefaultRequestHeaders.Add("player2-game-key", _gameClientId);
+                _httpClient.DefaultRequestHeaders.Add("X-Game-Client-Id", _gameClientId);
+            }
+        }
+
+        private static string ReadPlayer2Port()
+        {
+            try
+            {
+                var pf = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "game.player2.client", "api.port");
+                if (System.IO.File.Exists(pf)) return System.IO.File.ReadAllText(pf).Trim();
+            }
+            catch { }
+            return "4315";
+        }
 
         public void Dispose()
         {

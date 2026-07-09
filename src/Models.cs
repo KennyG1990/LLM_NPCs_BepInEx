@@ -29,6 +29,25 @@ namespace GoingMedieval.LLM_NPCs
         [JsonProperty("pricing_prompt")]
         public string PricingPrompt { get; set; } = "0.00";
 
+        [JsonProperty("pricing_completion")]
+        public string PricingCompletion { get; set; } = "0.00";
+
+        /// <summary>"$0.60/$1.20 per 1M" (prompt/completion) from OpenRouter's
+        /// per-token USD strings — the number a human can actually budget with.</summary>
+        public string PricePerMillion
+        {
+            get
+            {
+                double p = 0, c = 0;
+                double.TryParse(PricingPrompt, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out p);
+                double.TryParse(PricingCompletion, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out c);
+                if (p <= 0 && c <= 0) return "FREE";
+                return $"${p * 1_000_000:0.##}/${c * 1_000_000:0.##} per 1M";
+            }
+        }
+
         [JsonProperty("is_free")]
         public bool IsFree { get; set; } = true;
     }
@@ -126,6 +145,14 @@ namespace GoingMedieval.LLM_NPCs
             }
             
             sb.AppendLine($"Mood: {context.Mood} (Score: {context.MoodScore:F0}/100)");
+            if (!string.IsNullOrEmpty(context.Religion) || context.ReligiousAlignment != 0f)
+                sb.AppendLine($"Faith: {context.Religion} (alignment {context.ReligiousAlignment:F1} — devout vs skeptic shapes worldview, arguments, and alliances)");
+            if (!string.IsNullOrEmpty(context.Weapon))
+                sb.AppendLine($"Weapon: {context.Weapon}" + (context.Equipment != null
+                    ? $" | Armor: {context.Equipment.Armor ?? "none"} | Helmet: {context.Equipment.Helmet ?? "none"} | Clothing: {context.Equipment.Clothing ?? "none"}"
+                    : " | Equipped: nothing"));
+            if (!string.IsNullOrEmpty(context.ScheduleSummary))
+                sb.AppendLine($"Daily schedule: {context.ScheduleSummary}");
             if (context.Health != null)
             {
                 sb.AppendLine($"Health: {context.Health.Current:F0}/{context.Health.Max:F0}");

@@ -1,0 +1,45 @@
+FILTER TYPE: NSMedieval.Stockpiles.ResourcesFilter
+METHODS:
+  add_OnParamsChangedEvent(Action value,)
+  remove_OnParamsChangedEvent(Action value,)
+  DeepCopy()
+  get_HitPointsPercent()
+  get_FreshnessPercent()
+  get_Quality()
+  get_AllowedResourceTypes()
+  get_DefaultAllowedResources()
+  AllowsAnyResourceFromCategory(ResourceCategory category,)
+  IsValid(ResourceInstance resource,)
+  IsValid(Resource blueprint,)
+  ToString()
+  IsBlueprintAllowed(Resource blueprint,)
+  IsBlueprintAllowed(String id,)
+  HasGroupIdentifierEnabled(String id,)
+  AddAllowedResource(String blueprintId,)
+  AddAllowedResource(Resource blueprint,)
+  CacheDefaultAllowedResources(Resource blueprint,)
+  AddAllowedResource(IEnumerable`1 resources,)
+  AddAllowedResourceByGroupId(String groupId,ItemMaterialCategory category,)
+  RemoveAllowedResourceByGroupId(String groupId,)
+  RemoveAllowedResource(String blueprintId,)
+  RemoveAllowedResource(Resource blueprint,)
+  RemoveAllowedResource(IEnumerable`1 resources,)
+  SetAllowedResourceTypes(IEnumerable`1 allowedResourceTypes,)
+  ClearAllowedResourceTypes()
+  SetQuality(IntRange quality,)
+  SetHitPointsPercent(IntRange hp,)
+  SetFreshnessPercent(IntRange freshness,)
+  OnBeforeSerialize()
+  OnAfterDeserialize()
+  ParametersChanged()
+  Serialize(FVSerializer serializer,)
+  <ParametersChanged>b__46_0()
+FIELDS:
+  IntRange hitPointsPercent = Range[0, 100]
+  IntRange quality = Range[1, 6]
+  IntRange freshnessPercent = Range[0, 100]
+  List`1 allowedResourceTypesSave count=2910 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
+  HashSet`1 allowedResourceTypes count=2910 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
+  List`1 allowedByBlueprintSave count=2910 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
+  HashSet`1 defaultAllowedResources count=2910 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
+  Action OnParamsChangedEvent = System.Action

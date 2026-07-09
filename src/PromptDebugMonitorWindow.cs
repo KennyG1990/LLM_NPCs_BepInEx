@@ -29,13 +29,19 @@ namespace GoingMedieval.LLM_NPCs
             _tracePath = PromptTrace.GetTraceFilePath() ?? string.Empty;
         }
 
+        /// <summary>Toolbar entry point (Ken: windows had no obvious opener).</summary>
+        public void Toggle()
+        {
+            _visible = !_visible;
+            if (_visibleConfig != null)
+                _visibleConfig.Value = _visible;
+        }
+
         public void Update()
         {
             if (_hotkeyConfig != null && _hotkeyConfig.Value.IsDown())
             {
-                _visible = !_visible;
-                if (_visibleConfig != null)
-                    _visibleConfig.Value = _visible;
+                Toggle();
             }
 
             if (!_visible)

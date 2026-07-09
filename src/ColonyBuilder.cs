@@ -39,6 +39,9 @@ namespace GoingMedieval.LLM_NPCs
         // same id, so bed placement self-limits at one-per-settler.
         private const string BedId = "hay_sleeping_spot";
         private const string CookId = "camp_fire";
+        // BASIC tier (Ken): pick what the CREW CAN BUILD — plain research_table
+        // needs Construction 10 nobody has; basic needs 60 wood and no skill wall.
+        private const string TableId = "basic_research_table";
 
         // Belt-and-suspenders caps so a lagging census can't spawn infinite
         // objects. Real bound still comes from the game-truth census each tick.
@@ -93,8 +96,60 @@ namespace GoingMedieval.LLM_NPCs
                 // needs — computed even when autonomy is off (it feeds decision-making).
                 ColonyAlerts.Compute(pop);
 
+                // Read the SAME per-blueprint blockers the player's STATS panel
+                // shows (unreachable / no resources / no skilled worker) so the
+                // colony KNOWS why something isn't getting built.
+                BlueprintDiagnostics.Scan();
+                if (BlueprintDiagnostics.Blocked > 0)
+                    LLMNPCsPlugin.LogToFile($"[ColonyBuilder] blueprints: {BlueprintDiagnostics.Current}");
+
+                // ── REACT to blueprint blockers (read->decide->act loop) ──
+                // Resources missing for a pending blueprint: get MORE WOOD moving
+                // (designation is idempotent; session caps still bound it).
+                // Nobody can build it -> remember and STOP re-placing it (the
+                // capability principle: don't order what your crew can't do).
+                if (BlueprintDiagnostics.AnyNoSkill && !BuiltState.SkillBlocked(TableId)
+                    && BlueprintDiagnostics.Current.Contains(TableId))
+                {
+                    BuiltState.SetSkillBlocked(TableId);
+                    LLMNPCsPlugin.LogToFile($"[ColonyBuilder] REACT no-skill -> {TableId} marked skill-blocked; will not re-place until skills rise");
+                }
+                if (BlueprintDiagnostics.AnyNoResources && pop > 0)
+                {
+                    var live0 = settlers.FirstOrDefault(s => s != null && s.gameObject != null);
+                    if (live0 != null)
+                    {
+                        int t = WoodGatherer.DesignateTreesNear(live0.gameObject, 16, 10);
+                        if (t > 0) LLMNPCsPlugin.LogToFile($"[ColonyBuilder] REACT no-resources -> designated {t} more trees");
+                    }
+                }
+
                 if (pop == 0) { LastAction = "no settlers"; return; }
                 if (!autonomyOn) { LastAction = "autonomy OFF (enable Full AI Autonomy)"; return; }
+
+                // OVERNIGHT AUTONOMY: events auto-pause the game; when the colony
+                // is handed to the AI it unpauses itself (raid -> normal speed).
+                AutoSpeed.EnsureRunning();
+
+                // COMPARATIVE ADVANTAGE: route each settler's job priorities by
+                // skill + passion/resentment (once per settler per session).
+                JobRouter.RouteAll(live);
+
+                // WORK/LIFE BALANCE: healthy schedule (8h sleep, 8h work,
+                // guaranteed leisure) — exhausted-awake-at-20h fix.
+                ScheduleRouter.ApplyAll(live);
+
+                // STOCKPILE HYGIENE: waste/carcass only allowed in the zone
+                // FARTHEST from home — haulers get exactly one refuse target
+                // (poop and bones leave the pantry). Dump-first API groundwork
+                // stays for deeper zone specialization later.
+                StockpileZoner.Tick();
+                if (ColonyHome.Established) StockpileZoner.Apply(ColonyHome.X, ColonyHome.Z);
+
+                // WORLDSENSE (Planner leg 1): rasterize the home region once per
+                // session for validation — becomes the Player2 planning input.
+                if (ColonyHome.Established && WorldSense.LastGrid.Length == 0)
+                    WorldSense.Rasterize(ColonyHome.X, ColonyHome.Y, ColonyHome.Z);
 
                 // Fix the colony HOME waypoint once (settler-cluster centroid). All
                 // placement + tree designation then anchor here so the village stays
@@ -140,10 +195,14 @@ namespace GoingMedieval.LLM_NPCs
                 // VERIFIED world census (phantom instances filtered out), so a
                 // reload with an existing stockpile places NOTHING — the session
                 // cap is only a belt-and-suspenders bound within one session.
-                if (stockpiles == 0 && _stockpilesPlaced < MaxStockpiles)
+                // STORAGE PRESSURE (Ken, live): 100+ loose piles sprawling on the
+                // ground means the zones are FULL — a colony that plans ahead adds
+                // storage before goods rot in the rain. Expand up to 4 zones.
+                bool storageFull = ResourceUnforbidder.LastTotal > 80 && stockpiles < 4;
+                if ((stockpiles == 0 || storageFull) && _stockpilesPlaced < MaxStockpiles)
                 {
                     var r = StockpilePlacer.TryPlaceStockpileNear(builder.gameObject, 4);
-                    Record("STORAGE", r, ref _stockpilesPlaced);
+                    Record(storageFull ? "STORAGE-EXPAND" : "STORAGE", r, ref _stockpilesPlaced);
                     return;
                 }
 
@@ -195,12 +254,46 @@ namespace GoingMedieval.LLM_NPCs
                 // tech). The "Research table missing" alert sat unactioned for
                 // days; a forward-planning colony builds it as soon as shelter
                 // exists. Census-gated like the cookfire (id: research_table).
-                int research = StockpilePlacer.CountBuildings("research_table");
-                if (research == 0)
+                int research = StockpilePlacer.CountBuildings(TableId);
+                if (research == 0 && !BuiltState.SkillBlocked(TableId))
                 {
-                    var rr = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, "research_table");
-                    int dummy = 0; Record("RESEARCH-TABLE", rr, ref dummy);
+                    var rr = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, TableId);
+                    int dummy = 0; Record("RESEARCH-TABLE(basic)", rr, ref dummy);
                     return;
+                }
+                // SURVIVAL WEAPONS (live starvation repro: sheep beside starving
+                // settlers, 'Hunter lacks ranged weapon' — hunting REQUIRES a
+                // ranged weapon). Chain: fletchers_table -> craft sling+bow ->
+                // hunters (Marksman-passionate get Hunting prio 1) can feed us.
+                int fletcher = StockpilePlacer.CountBuildings("fletchers_table");
+                if (fletcher == 0 && !BuiltState.SkillBlocked("fletchers_table"))
+                {
+                    var wr = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, "fletchers_table");
+                    int d2 = 0; Record("FLETCHER", wr, ref d2);
+                    return;
+                }
+                if (fletcher > 0)
+                {
+                    ProductionPlanner.Tick("fletchers_table", "sling");
+                    ProductionPlanner.Tick("fletchers_table", "short_bow");
+                }
+
+                // Table exists -> pick a research project (prerequisite chain:
+                // stairs/underground first, then construction/farming).
+                ResearchPlanner.Tick();
+                // ...and keep production queues filled (empty queue = idle
+                // station): research books ("Chronicle") at the table, meals at
+                // the campfire (ids ground-truthed in production_ids.txt).
+                ProductionPlanner.Tick(TableId, "basic_research_book");
+                ProductionPlanner.Tick(CookId, "meal");
+
+                // Priority 4.7: FARM — agriculture researched by the colony's own
+                // hand; a crop field is the sustainable-food leg (hunt/forage
+                // deplete). One 4x4 near home on clear dry ground.
+                if (ColonyHome.Established && !BuiltState.FarmPlaced)
+                {
+                    var fr = FarmPlanner.Tick(ColonyHome.X, ColonyHome.Y, ColonyHome.Z, ColonyHome.WorkRadius);
+                    if (fr.StartsWith("farm: '")) { LLMNPCsPlugin.LogToFile($"[ColonyBuilder] {fr}"); return; }
                 }
 
                 // Priority 5: UNDERGROUND — dig a food CELLAR into a nearby hill
@@ -241,6 +334,13 @@ namespace GoingMedieval.LLM_NPCs
                     $"wood:   {WoodGatherer.LastResult}\n" +
                     $"food:   {FoodGatherer.LastResult}\n" +
                     $"cellar: {CellarBuilder.LastResult}\n" +
+                    $"research: {ResearchPlanner.LastResult}\n" +
+                    $"blueprints: {BlueprintDiagnostics.Current}\n" +
+                    $"production: {ProductionPlanner.LastResult}\n" +
+                    $"farm:   {FarmPlanner.LastResult}\n" +
+                    $"jobs:   {JobRouter.LastResult}\n" +
+                    $"sched:  {ScheduleRouter.LastResult}\n" +
+                    $"budget: {LLMClient.MaxCallsPerHour}/hr cap, suppressed={LLMClient.SuppressedCount}\n" +
                     $"home:   {ColonyHome.LastResult}\n" +
                     $"alerts: {ColonyAlerts.Current.Replace("\n", " | ")}\n");
             }

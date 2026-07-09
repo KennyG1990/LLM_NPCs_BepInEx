@@ -1,10 +1,16 @@
-time: 00:23:37
-census: autonomy=True pop=3 stockpiles=2 cookfire=1 beds=3 house=done [placed sp=0 cook=0 bed=0]
-action: need=RESEARCH-TABLE autonomy=True pop=3 stockpiles=2 cookfire=1 beds=3 house=done [placed sp=0 cook=0 bed=0] -> ok: building blueprint 'research_table' committed at (67,5,78) — NO cursor; settlers will construct it
-house:  house: RE-ADOPTED persisted site (63,79) lvl 5: 22 pieces verified in-world, roofs 8/8
-unforbid: allowed 0 (forbidden=0 total=115)
-wood:   designated 0 trees (scanned 10, session 0)
-food:   hunt+0 forage+0 (session hunt=1 forage=0)
+time: 18:22:46
+census: autonomy=True pop=5 stockpiles=4 cookfire=1 beds=4 house=done [placed sp=0 cook=0 bed=0]
+action: need=BED autonomy=True pop=5 stockpiles=4 cookfire=1 beds=4 house=done [placed sp=0 cook=0 bed=0] -> ok: building blueprint 'hay_sleeping_spot' committed at (112,6,88) — NO cursor; settlers will construct it
+house:  house: RE-ADOPTED persisted site (110,89) lvl 6: 17 pieces verified in-world, roofs 8/8
+unforbid: allowed 0 (forbidden=0 total=66)
+wood:   designated 0 trees (scanned 9, session 0)
+food:   hunt+0 forage+0 (session hunt=6 forage=31)
 cellar: cellar: no minable hill face near home (flat terrain) — needs stairs support (v2)
-home:   home RESTORED at (67,5,79) from persisted state, radius 22
-alerts: Colony infrastructure is adequate; focus on comfort, defence, and growth.
+research: research: no NEEDS match among 0 unlockable (see research_ids.txt)
+blueprints: (no blueprints pending)
+production: prod: 1 order(s) already queued at camp_fire
+farm:   (idle)
+jobs:   jobs: routed 1 settler(s) by skill+passion — Wlfled Elford:Tailoring(lvl20) 
+sched:  schedule: applied medieval-9to5 to 1 settler(s)
+home:   home RESTORED at (114,6,87) from persisted state, radius 22
+alerts: The whole settlement urgently needs (highest priority): | - FOOD IS SCARCE (stored nutrition 0 for 5 settlers) — hunt, forage, or farm and cook meals before anyone starves. | - Not enough beds (4/5) — build beds inside a roofed house so settlers rest and stay dry.

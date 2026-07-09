@@ -34,6 +34,8 @@ namespace GoingMedieval.LLM_NPCs
         public ConfigEntry<string> ModelNpcDecisions { get; private set; }
         public ConfigEntry<string> ModelPlayerChat { get; private set; }
         public ConfigEntry<string> ModelNpcToNpcChat { get; private set; }
+        public ConfigEntry<int> NpcToNpcIntervalMinutes { get; private set; }
+        public ConfigEntry<int> PlannerIntervalMinutes { get; private set; }
         public ConfigEntry<float> Temperature { get; private set; }
         public ConfigEntry<float> DecisionInterval { get; private set; }
         public ConfigEntry<bool> EnableFullAutonomy { get; private set; }
@@ -156,8 +158,12 @@ namespace GoingMedieval.LLM_NPCs
         private void OnGUI()
         {
             DialogueManager?.OnGUI();
-            // MenuIntegration has its own OnGUI as a MonoBehaviour - Unity calls it automatically
-            
+            // Mod toolbar + settings window: drawn from HERE because this OnGUI
+            // provably renders in-game (chat windows do), while MenuIntegration's
+            // Unity-called OnGUI was observed dead during gameplay (Ken:
+            // 'there is no config menu'). Single render path.
+            MenuIntegration?.DrawGUI();
+
             // Social systems GUI
             ChatBubbleManager?.OnGUI();
             SocialHubWindow?.OnGUI();
@@ -188,6 +194,13 @@ namespace GoingMedieval.LLM_NPCs
             {
                 SetupConfiguration();
                 LogToFile("[Plugin:Awake] Configuration setup complete");
+
+                // DASHBOARD AUTO-START (Ken believed this always existed — it
+                // never did; the python process just happened to stay alive for
+                // days). If 8714 doesn't answer, spawn start_dashboard.bat
+                // hidden, so the colony's memory brain truly launches with the
+                // game and picks up dashboard code changes on game restarts.
+                EnsureDashboardRunning();
 
                 PromptTrace.Initialize(_logDirectory, EnablePromptTracing.Value);
                 LogToFile("[Plugin:Awake] PromptTrace initialized");
@@ -260,6 +273,44 @@ namespace GoingMedieval.LLM_NPCs
                 "Fallback/default LLM model if per-task model is blank. Free models: " + string.Join(", ", LLMClient.FreeModels)
             );
 
+            // PROVIDER SELECTOR (Ken: Player2 joules ran dry). "player2" (local
+            // daemon, default) or "openrouter" (uses LLM.ApiKey + LLM.Model).
+            var provider = Config.Bind(
+                "LLM",
+                "Provider",
+                "player2",
+                "LLM backend: 'player2' (local companion app) or 'openrouter' (cloud, needs ApiKey)."
+            );
+            var callsPerHour = Config.Bind(
+                "LLM",
+                "MaxLLMCallsPerHour",
+                8,
+                "Hard budget cap across ALL LLM calls (decisions, dialogue, summaries). Suppressed calls use deterministic fallbacks."
+            );
+            LLMClient.Provider = (provider.Value ?? "player2").Trim().ToLowerInvariant();
+            LLMClient.OpenRouterApiKey = (ApiKey.Value ?? "").Trim();
+            LLMClient.OpenRouterModel = string.IsNullOrWhiteSpace(Model.Value) ? "openai/gpt-oss-120b" : Model.Value.Replace(":free", "");
+            LLMClient.MaxCallsPerHour = Math.Max(1, callsPerHour.Value);
+
+            // PER-TASK MODELS (OpenRouter only; Ken: each brain gets the right
+            // size). Each entry documents EXACTLY what that model does.
+            var modelPlanner = Config.Bind("LLM.TaskModels", "Planner",
+                "",
+                "COLONY PLANNER: reads the map grid + colony state and writes the immediate + seasonal plan " +
+                "(WHERE/WHAT/WHY/WHEN/HOW). Runs 1-2x per in-game day — use your SMARTEST model; a bad plan " +
+                "costs more than a good model. Empty = panel-selected model.");
+            var modelChronicle = Config.Bind("LLM.TaskModels", "Chronicle",
+                "",
+                "CHRONICLES & SUMMARIES: death histories, memory summaries, family stories. Rare, long-form, " +
+                "quality matters but not urgency — a mid-tier model with long context. Empty = panel model.");
+            // PER-TASK INTERVALS (player_chat deliberately has none: real-time).
+            NpcToNpcIntervalMinutes = Config.Bind("LLM.Intervals", "NpcToNpcConversationMinutes", 15,
+                "Minutes between ambient NPC-to-NPC conversations (each costs 1 call). Raise to save budget.");
+            PlannerIntervalMinutes = Config.Bind("LLM.Intervals", "PlannerMinutes", 30,
+                "Minutes between colony-planner calls (also replans on crises). The planner is the expensive brain — keep this high.");
+            // NOTE: TaskModels are pushed AFTER the per-task binds below —
+            // reading ModelNpcDecisions.Value here crashed Awake (NRE, live).
+
             ModelNpcDecisions = Config.Bind(
                 "LLM",
                 "ModelNpcDecisions",
@@ -280,6 +331,14 @@ namespace GoingMedieval.LLM_NPCs
                 LLMClient.RecommendedTaskModels["npc_to_npc"],
                 "Model for NPC<->NPC autonomous dialogue (bulk, low cost). Recommended: meta-llama/llama-3.2-3b-instruct:free"
             );
+
+            // PER-TASK MODEL ROUTING → LLMClient (now that all binds exist).
+            LLMClient.TaskModels["npc_decisions"] = ModelNpcDecisions.Value;   // AUTONOMOUS DECISIONS: high-frequency next-action picks — cheapest/fastest model
+            LLMClient.TaskModels["player_chat"] = ModelPlayerChat.Value;       // PLAYER CONVERSATIONS: real-time, player-facing — best voice (NO interval)
+            LLMClient.TaskModels["npc_to_npc"] = ModelNpcToNpcChat.Value;      // NPC-TO-NPC BANTER: ambient social dialogue — mid-tier
+            LLMClient.TaskModels["planner"] = modelPlanner.Value;
+            LLMClient.TaskModels["chronicle"] = modelChronicle.Value;
+            LogToFile($"[Plugin:SetupConfiguration] Provider={LLMClient.Provider} budget={LLMClient.MaxCallsPerHour}/hr keySet={LLMClient.OpenRouterApiKey.Length > 0} taskModels=[dec:{ModelNpcDecisions.Value}|chat:{ModelPlayerChat.Value}|n2n:{ModelNpcToNpcChat.Value}|plan:{modelPlanner.Value}|chron:{modelChronicle.Value}]");
 
             Temperature = Config.Bind(
                 "LLM",
@@ -382,6 +441,41 @@ namespace GoingMedieval.LLM_NPCs
             );
 
             LogToFile("[Plugin:SetupConfiguration] Complete");
+        }
+
+        /// <summary>Spawn the dashboard server if 8714 isn't answering. The
+        /// health probe is quick and non-blocking beyond ~1.5s at startup.</summary>
+        private void EnsureDashboardRunning()
+        {
+            try
+            {
+                var req = System.Net.WebRequest.Create("http://127.0.0.1:8714/health");
+                req.Timeout = 1500;
+                using (req.GetResponse()) { }
+                LogToFile("[Plugin:Dashboard] already running on 8714");
+            }
+            catch
+            {
+                try
+                {
+                    string bat = @"F:\DEV_ENV\projects\Mods\Going Medieval\LLM_NPCs_BepInEx\start_dashboard.bat";
+                    if (System.IO.File.Exists(bat))
+                    {
+                        var psi = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "cmd.exe",
+                            Arguments = "/c \"" + bat + "\"",
+                            UseShellExecute = false,
+                            CreateNoWindow = true,
+                            WorkingDirectory = System.IO.Path.GetDirectoryName(bat)
+                        };
+                        System.Diagnostics.Process.Start(psi);
+                        LogToFile("[Plugin:Dashboard] 8714 not answering — spawned start_dashboard.bat");
+                    }
+                    else LogToFile("[Plugin:Dashboard] start_dashboard.bat not found");
+                }
+                catch (Exception ex) { LogToFile("[Plugin:Dashboard] spawn failed: " + ex.Message); }
+            }
         }
 
         private void InitializeSystems()
@@ -571,7 +665,11 @@ namespace GoingMedieval.LLM_NPCs
 
                 // Poll every 1 second instead of waiting the entire DecisionInterval.
                 // This allows the random jitter in NPCRegistry to organically spread out requests.
-                yield return new WaitForSeconds(1f);
+                // REALTIME wait: WaitForSeconds freezes when the game auto-pauses
+                // (events pause timeScale -> the whole mod stalled, telemetry
+                // froze at 02:21 live). Realtime keeps the brain ticking through
+                // pauses; orders simply execute when the game resumes.
+                yield return new WaitForSecondsRealtime(1f);
             }
         }
 

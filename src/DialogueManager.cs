@@ -48,6 +48,13 @@ namespace GoingMedieval.LLM_NPCs
         /// <summary>
         /// Call this from Plugin.Update() to handle input and rendering
         /// </summary>
+        /// <summary>Toolbar entry point: open chat with the currently selected
+        /// settler (same path as the hotkey).</summary>
+        public void OpenDialogueWithSelected()
+        {
+            if (!_isInDialogue) TryStartDialogue();
+        }
+
         public void Update()
         {
             // Check for dialogue initiation hotkey (configurable via BepInEx config)
@@ -317,7 +324,8 @@ Use contradiction only if you believe the player contradicted an earlier claim."
                             FlowType   = PromptFlowTypes.PlayerToNpc,
                             SenderName = "Player",
                             TargetName = context.Name
-                        });
+                        },
+                        task: "player_chat");   // real-time, player-facing — best model, no interval
 
                     var parsed = ParseDialogueResponse(response);
                     var final = parsed.Text;

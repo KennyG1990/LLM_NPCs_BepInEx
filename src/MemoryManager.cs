@@ -407,7 +407,15 @@ namespace GoingMedieval.LLM_NPCs
                 { "mood_logs", context.MoodLogs },
                 { "social_logs", context.SocialLogs },
                 { "belief_logs", context.BeliefLogs },
-                { "colony_wealth", context.ColonyWealth }
+                { "colony_wealth", context.ColonyWealth },
+                // dashboard Character Sheet panels (Ken): hourly schedule dict
+                // (normalize_schedule_entries expects hour->activity), weapon,
+                // faith. 'manage' settings await their game-surface ground truth.
+                { "schedule", context.Schedule },
+                { "schedule_summary", context.ScheduleSummary },
+                { "weapon", context.Weapon },
+                { "religion", context.Religion },
+                { "religious_alignment", context.ReligiousAlignment }
             };
 
             var payload = new Dictionary<string, object>

@@ -112,19 +112,46 @@ namespace GoingMedieval.LLM_NPCs
         /// IMGUI rendering for the options menu overlay button.
         /// Called by Unity's OnGUI system.
         /// </summary>
+        private int _lastDrawFrame = -1;
+        private EventType _lastDrawEvent;
+
         public void DrawOptionsOverlay()
         {
-            if (!_optionsMenuVisible || _menuOpen) return;
+            // MOD TOOLBAR (Ken: windows had NO obvious opener — the old button
+            // only rendered while the game's Options menu was open). Always
+            // visible, top-right, one labeled button per mod window. Vanilla
+            // tones: near-black panel, parchment text (full GM skin = #30 ph2).
+            // Called from BOTH MenuIntegration.OnGUI and Plugin.OnGUI (belt +
+            // suspenders — one path proved dead in-game); guard double-draw.
+            if (_menuOpen) return;
+            if (Time.frameCount == _lastDrawFrame && Event.current.type == _lastDrawEvent) return;
+            _lastDrawFrame = Time.frameCount;
+            _lastDrawEvent = Event.current.type;
+            GUI.depth = -1000;
 
-            // Position button at top-right of screen
-            _imguiButtonRect.x = Screen.width - _imguiButtonRect.width - 20;
-            _imguiButtonRect.y = 20;
+            var panelBg = new Color(0.07f, 0.07f, 0.09f, 0.92f);
+            var parchment = new Color(0.87f, 0.82f, 0.70f);
+            float w = 170f, h = 26f, pad = 4f, x = Screen.width - w - 12f, y = 12f;
 
-            GUI.depth = -1000; // Render on top
-            if (GUI.Button(_imguiButtonRect, "LLM NPCs Settings"))
-            {
-                ToggleModMenu();
-            }
+            var old = GUI.backgroundColor;
+            var oldC = GUI.contentColor;
+            GUI.backgroundColor = panelBg;
+            GUI.Box(new Rect(x - pad, y - pad, w + pad * 2, (h + pad) * 4 + pad * 2), "");
+            GUI.contentColor = parchment;
+
+            if (GUI.Button(new Rect(x, y, w, h), "LLM Settings")) ToggleModMenu();
+            y += h + pad;
+            if (GUI.Button(new Rect(x, y, w, h), "Talk to Settler"))
+                LLMNPCsPlugin.Instance?.DialogueManager?.OpenDialogueWithSelected();
+            y += h + pad;
+            if (GUI.Button(new Rect(x, y, w, h), "Social Hub"))
+                LLMNPCsPlugin.Instance?.SocialHubWindow?.Toggle();
+            y += h + pad;
+            if (GUI.Button(new Rect(x, y, w, h), "Prompt Log"))
+                LLMNPCsPlugin.Instance?.PromptDebugMonitorWindow?.Toggle();
+
+            GUI.backgroundColor = old;
+            GUI.contentColor = oldC;
         }
 
         private void TryInjectButtonIntoOptionsMenu()
@@ -809,9 +836,12 @@ namespace GoingMedieval.LLM_NPCs
             }
         }
 
-        public void OnGUI()
+        /// <summary>Renamed from OnGUI: Unity's auto-call on this MonoBehaviour
+        /// proved dead during gameplay. Plugin.OnGUI (proven alive everywhere)
+        /// is now the single render driver.</summary>
+        public void DrawGUI()
         {
-            // Draw the IMGUI overlay button when options menu is visible
+            // Draw the mod toolbar (self-guards against double draw)
             DrawOptionsOverlay();
 
             if (!_menuOpen) return;
@@ -880,7 +910,7 @@ namespace GoingMedieval.LLM_NPCs
                 {
                     string label = model.IsFree
                         ? $"[FREE] {model.Name ?? model.Id}  (ctx: {model.ContextLength})"
-                        : $"{model.Name ?? model.Id}  (ctx: {model.ContextLength}, ${model.PricingPrompt}/tok)";
+                        : $"{model.Name ?? model.Id}  (ctx: {model.ContextLength}, {model.PricePerMillion})";
 
                     bool isSelected = _modelConfig.Value == model.Id;
                     GUI.backgroundColor = isSelected ? new Color(0.2f, 0.6f, 0.2f) : new Color(0.2f, 0.2f, 0.3f);

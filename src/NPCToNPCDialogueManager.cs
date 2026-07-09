@@ -28,7 +28,8 @@ namespace GoingMedieval.LLM_NPCs
         // Settlers cluster together, so a short cooldown meant near-constant
         // (multi-turn) LLM chatter — a major token sink. 15 min keeps occasional
         // social flavour without the cost.
-        private readonly float _conversationCooldown = 900f; // 15 minutes between conversations
+        private float _conversationCooldown
+            => (LLMNPCsPlugin.Instance?.NpcToNpcIntervalMinutes?.Value ?? 15) * 60f; // configurable (LLM.Intervals)
         private readonly float _maxConversationDistance = 5f;
         private readonly int _maxExchanges = 2; // was 4 (=8 LLM calls/convo); 2 keeps it short + cheap
 
