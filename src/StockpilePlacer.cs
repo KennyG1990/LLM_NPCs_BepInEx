@@ -409,15 +409,208 @@ namespace GoingMedieval.LLM_NPCs
                 // DragSpawnRoof's SpawnFromPool returns null or CanPlaceRoof rejects
                 // — 'ok: invoked' was a LIE; roofs never landed, Ken saw rain on
                 // beds). Count RoofComponentManager instances before/after.
+                // ROOT CAUSE (decompiled CreateRoofs, task #26): the roof BUILDING is
+                // created regardless, but it's only QUEUED for settlers to construct
+                // `if (autoconstruct)`. SpawnRoofAutoTesting never sets that flag, so we
+                // created a roof ghost that never got built — "rain on beds". Set the
+                // manager's Autoconstruct=true before the call (save/restore).
+                var acProp = bpmType.GetProperty("Autoconstruct", BindingFlags.Public | BindingFlags.Instance);
+                bool prevAc = false;
+                if (acProp != null) { try { prevAc = (bool)acProp.GetValue(bpm, null); acProp.SetValue(bpm, true, null); } catch { } }
+
                 int before = CountRoofComponents();
                 try { method.Invoke(bpm, new[] { blueprint, cell, (object)0, scale, positions }); }
-                catch (Exception se) { return "SpawnRoofAutoTesting exc: " + (se.InnerException?.Message ?? se.Message); }
+                catch (Exception se) { if (acProp != null) { try { acProp.SetValue(bpm, prevAc, null); } catch { } } return "SpawnRoofAutoTesting exc: " + (se.InnerException?.Message ?? se.Message); }
                 int after = CountRoofComponents();
+                if (acProp != null) { try { acProp.SetValue(bpm, prevAc, null); } catch { } }   // restore
                 if (after > before)
-                    return $"ok: roof PLACED @({cx},{cy},{cz}) (components {before}->{after})";
-                return $"roof REJECTED @({cx},{cy},{cz}) (components {before}->{after}: SpawnFromPool-null or CanPlaceRoof false)";
+                    return $"ok: roof QUEUED @({cx},{cy},{cz}) (components {before}->{after}, autoconstruct=on — settlers will build it)";
+                return $"roof REJECTED @({cx},{cy},{cz}) (components {before}->{after}: CanPlaceRoof false — walls/support missing?)";
             }
             catch (Exception ex) { return "roof err: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>Place a ROOF STRIP spanning wall-to-wall. GROUND TRUTH
+        /// (decompiled CanPlaceRoof:745-756): only the strip's FIRST and LAST
+        /// positions need support (wall/beam/door at y-1, floor at cell, or
+        /// ground) — the middle legitimately floats. Single-cell roofs over
+        /// interiors can NEVER pass (live: 'REJECTED, components 0->0'); real
+        /// roofs are drag-strips with endpoints on the walls, exactly what the
+        /// game's RoofDragPositiveXPositiveZ builds (scale=(len,height,1),
+        /// positions=row cells).</summary>
+        public static string TryPlaceRoofStrip(int x0, int x1, int y, int z, string roofId = "wood_roof_whole")
+        {
+            try
+            {
+                if (x1 < x0) { var t = x0; x0 = x1; x1 = t; }
+                int len = x1 - x0 + 1;
+                object blueprint = GetBuildingBlueprint(roofId);
+                if (blueprint == null) return "no roof bp :: " + LastBuildingDiag;
+                var bpmType = FindType("NSMedieval.BuildingComponents.BuildingPlacementManager");
+                var bpm = bpmType?.GetProperty("Instance",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+                if (bpm == null) return "no BuildingPlacementManager";
+                var method = FindMethod(bpmType, "SpawnRoofAutoTesting", 5);
+                if (method == null) return "no SpawnRoofAutoTesting";
+                _vec3IntType = _vec3IntType ?? FindTypeByName("Vec3Int");
+
+                // pitched-roof height from the game's own RoofComponentBlueprint.GetHeight(len)
+                int height = 1;
+                try
+                {
+                    var rcId = blueprint.GetType().GetProperty("RoofComponentID")?.GetValue(blueprint, null) as string;
+                    var rcRepo = RepoInstance("RoofComponentRepository");
+                    var getById = rcRepo != null ? FindMethod(rcRepo.GetType(), "GetByID", 1) : null;
+                    var rcBp = getById?.Invoke(rcRepo, new object[] { rcId });
+                    var gh = rcBp?.GetType().GetMethod("GetHeight", new[] { typeof(int) });
+                    if (gh != null) height = (int)gh.Invoke(rcBp, new object[] { len });
+                }
+                catch { }
+
+                var gridPos = MakeVec3Int(x0, y, z);
+                var scale = MakeVec3Int(len, Math.Max(1, height), 1);
+                if (gridPos == null || scale == null) return "Vec3Int null";
+                var listType = typeof(System.Collections.Generic.List<>).MakeGenericType(_vec3IntType);
+                var positions = Activator.CreateInstance(listType);
+                var add = listType.GetMethod("Add");
+                for (int x = x0; x <= x1; x++) add.Invoke(positions, new[] { MakeVec3Int(x, y, z) });
+
+                var acProp = bpmType.GetProperty("Autoconstruct", BindingFlags.Public | BindingFlags.Instance);
+                bool prevAc = false;
+                if (acProp != null) { try { prevAc = (bool)acProp.GetValue(bpm, null); acProp.SetValue(bpm, true, null); } catch { } }
+                int before = CountRoofComponents();
+                try { method.Invoke(bpm, new[] { blueprint, gridPos, (object)0, scale, positions }); }
+                catch (Exception se) { if (acProp != null) { try { acProp.SetValue(bpm, prevAc, null); } catch { } } return "strip exc: " + (se.InnerException?.Message ?? se.Message); }
+                int after = CountRoofComponents();
+                if (acProp != null) { try { acProp.SetValue(bpm, prevAc, null); } catch { } }
+                if (after > before)
+                    return $"ok: roof STRIP x{x0}..{x1} z={z} y={y} len={len} h={height} (components {before}->{after}, autoconstruct — settlers will build)";
+                // GROUND TRUTH the rejection: CreateRoofs collapses the view to the
+                // SINGLE cell gridPos before CanPlaceRoof runs (decompiled
+                // BuildingPlacementManager.CreateRoofs:859-866), so replicate every
+                // CanPlaceRoof clause at gridPos and report WHICH one fails.
+                return $"roof strip REJECTED x{x0}..{x1} z={z} (components {before}->{after}) :: {RoofCellDiag(x0, y, z)}";
+            }
+            catch (Exception ex) { return "strip err: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>The no-autoconstruct era left PHANTOM roof blueprints on the
+        /// roof level — placed, never queued, never built — and they block every
+        /// new strip (live diag: BLOCKER@cell=Y with support=Y). Sweep one row:
+        /// count cells already holding a roof instance (any phase) and call the
+        /// game's own BaseBuildingInstance.AutoConstructSequence() on unqueued
+        /// blueprints (the exact call the autoconstruct path makes —
+        /// BuildingPlacementManager.AutoConstructBuildInOrder:646).</summary>
+        public static string KickRoofRow(int x0, int x1, int y, int z, string roofId, out int have)
+        {
+            have = 0; int kicked = 0, queued = 0, built = 0, noStab = 0;
+            try
+            {
+                var bmm = GetBuildingsManager();
+                if (bmm == null) return "no bmm";
+                var getB = bmm.GetType().GetMethod("GetBuildings",
+                    new[] { _vec3IntType ?? (_vec3IntType = FindTypeByName("Vec3Int")) });
+                if (getB == null) return "no GetBuildings";
+                if (x1 < x0) { var t = x0; x0 = x1; x1 = t; }
+                for (int x = x0; x <= x1; x++)
+                {
+                    var cell = MakeVec3Int(x, y, z);
+                    var list = cell != null ? getB.Invoke(bmm, new[] { cell }) as IEnumerable : null;
+                    if (list == null) continue;
+                    foreach (var inst in list)
+                    {
+                        if (inst == null) continue;
+                        var bp = inst.GetType().GetProperty("Blueprint")?.GetValue(inst, null);
+                        string bid = null;
+                        try { bid = bp?.GetType().GetMethod("GetID")?.Invoke(bp, null) as string; } catch { }
+                        if (bid != roofId) continue;
+                        have++;
+                        bool underCon = inst.GetType().GetProperty("IsUnderConstruction")?.GetValue(inst, null) is bool u && u;
+                        if (!underCon) { built++; break; }
+                        bool hasOrder = false;
+                        try { hasOrder = inst.GetType().GetMethod("HasConstructionOrder")?.Invoke(inst, null) is bool h && h; } catch { }
+                        if (hasOrder) { queued++; break; }
+                        bool stab = inst.GetType().GetProperty("HasStabilityToBuild")?.GetValue(inst, null) is bool s && s;
+                        if (!stab) { noStab++; break; }
+                        try
+                        {
+                            inst.GetType().GetMethod("AutoConstructSequence")?.Invoke(inst, null);
+                            kicked++;
+                        }
+                        catch (Exception ke) { LLMNPCsPlugin.LogToFile($"[StockpilePlacer] AutoConstructSequence failed @({x},{y},{z}): {ke.InnerException?.Message ?? ke.Message}"); }
+                        break;
+                    }
+                }
+                return $"row z={z}: roofs {have}/{x1 - x0 + 1} (built={built} queued={queued} KICKED={kicked} nostab={noStab})";
+            }
+            catch (Exception ex) { return "kick err: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>Replicate every clause of the game's CanPlaceRoof
+        /// (BuildingsManagerMain:679-756) at one cell and report each verdict —
+        /// the rejection diag. Clauses: ground/slope at the cell or below, any
+        /// non-floor building AT the cell blocks; support = Wall|Voxel|Beam|
+        /// Window|Door|BarnDoor at y-1 OR Floor at cell OR ground at y-1.</summary>
+        public static string RoofCellDiag(int x, int y, int z)
+        {
+            try
+            {
+                var cell = MakeVec3Int(x, y, z);
+                var below = MakeVec3Int(x, y - 1, z);
+                if (cell == null || below == null) return "diag: no Vec3Int";
+                bool gCell = SingletonBool("GroundManager", "GroundExists", cell);
+                bool gBelow = SingletonBool("GroundManager", "GroundExists", below);
+                bool sCell = SingletonBool("SlopeManager", "SlopeExists", cell);
+                bool sBelow = SingletonBool("SlopeManager", "SlopeExists", below);
+                string supp = "?", flr = "?", blk = "?";
+                var bmm = GetBuildingsManager();
+                var btType = FindTypeByName("BuildingType");
+                if (bmm != null && btType != null)
+                {
+                    long suppMask = EnumMask(btType, "Wall", "Voxel", "Beam", "Window", "Door", "BarnDoor");
+                    long floorMask = EnumMask(btType, "Floor");
+                    long passMask = EnumMask(btType, "Default", "Floor", "Rug");
+                    var be = bmm.GetType().GetMethod("BuildingExists",
+                        new[] { btType, _vec3IntType ?? (_vec3IntType = FindTypeByName("Vec3Int")) });
+                    if (be != null)
+                    {
+                        try { supp = be.Invoke(bmm, new[] { Enum.ToObject(btType, suppMask), below }) is bool b1 && b1 ? "Y" : "n"; } catch { }
+                        try { flr = be.Invoke(bmm, new[] { Enum.ToObject(btType, floorMask), cell }) is bool b2 && b2 ? "Y" : "n"; } catch { }
+                        try { blk = be.Invoke(bmm, new[] { Enum.ToObject(btType, unchecked(~passMask)), cell }) is bool b3 && b3 ? "Y" : "n"; } catch { }
+                    }
+                }
+                return $"diag@({x},{y},{z}) ground[cell={(gCell ? "Y" : "n")} below={(gBelow ? "Y" : "n")}] " +
+                       $"slope[cell={(sCell ? "Y" : "n")} below={(sBelow ? "Y" : "n")}] " +
+                       $"support(wallish)below={supp} floor@cell={flr} BLOCKER@cell={blk}";
+            }
+            catch (Exception ex) { return "diag err: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>MonoSingleton&lt;T&gt;.Instance.Method(Vec3Int) → bool, by name.</summary>
+        private static bool SingletonBool(string typeName, string method, object arg)
+        {
+            try
+            {
+                var t = FindTypeByName(typeName);
+                var inst = t?.GetProperty("Instance",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+                var m = inst?.GetType().GetMethod(method, new[] { _vec3IntType ?? (_vec3IntType = FindTypeByName("Vec3Int")) });
+                return m != null && m.Invoke(inst, new[] { arg }) is bool b && b;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>OR the values of the named enum members (names verified via
+        /// Enum.GetNames — the HourType lesson: guessed names fail SILENTLY).</summary>
+        private static long EnumMask(Type enumType, params string[] names)
+        {
+            long mask = 0;
+            var all = Enum.GetNames(enumType);
+            foreach (var want in names)
+                foreach (var n in all)
+                    if (string.Equals(n, want, StringComparison.OrdinalIgnoreCase))
+                    { mask |= Convert.ToInt64(Enum.Parse(enumType, n)); break; }
+            return mask;
         }
 
         /// <summary>Count cached roof component instances — the MEASURED truth of
@@ -885,6 +1078,56 @@ namespace GoingMedieval.LLM_NPCs
         /// construction + completed), via BuildingsManagerMain.GetBuildingsCount.
         /// Returns -1 when the map isn't ready. Counts by the SAME id string the
         /// placer targets, so it self-limits bed placement without double-counting.</summary>
+        /// <summary>True if a verified stockpile ZONE sits within radius (x/z
+        /// Chebyshev) of the given point — the coherence census (#32): storage
+        /// must exist AT HOME, not merely somewhere on the map.</summary>
+        public static bool AnyStockpileNear(int x, int z, int radius)
+        {
+            try
+            {
+                var mgr = GetLiveStockpileManager();
+                var sp = mgr?.GetType().GetProperty("Stockpiles")?.GetValue(mgr, null) as IEnumerable;
+                if (sp == null) return false;
+                foreach (var inst in sp)
+                {
+                    var start = inst?.GetType().GetProperty("Start")?.GetValue(inst, null);
+                    if (start == null) continue;
+                    int sx = ReadIntField(start, "x", "X"), sz = ReadIntField(start, "z", "Z");
+                    if (Math.Abs(sx - x) <= radius && Math.Abs(sz - z) <= radius) return true;
+                }
+                return false;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>True if any building/blueprint with this id sits within radius
+        /// (x/z Chebyshev) of the point. Walks the manager's public
+        /// PositionInstanceListDictionary (decompiled BuildingsManagerMain:128).</summary>
+        public static bool AnyBuildingNear(string id, int x, int z, int radius)
+        {
+            try
+            {
+                var bmm = GetBuildingsManager();
+                var dict = bmm?.GetType().GetProperty("PositionInstanceListDictionary")?.GetValue(bmm, null) as IDictionary;
+                if (dict == null) return false;
+                foreach (DictionaryEntry e in dict)
+                {
+                    int px = ReadIntField(e.Key, "x", "X"), pz = ReadIntField(e.Key, "z", "Z");
+                    if (Math.Abs(px - x) > radius || Math.Abs(pz - z) > radius) continue;
+                    if (!(e.Value is IEnumerable list)) continue;
+                    foreach (var inst in list)
+                    {
+                        var bp = inst?.GetType().GetProperty("Blueprint")?.GetValue(inst, null);
+                        string bid = null;
+                        try { bid = bp?.GetType().GetMethod("GetID")?.Invoke(bp, null) as string; } catch { }
+                        if (bid == id) return true;
+                    }
+                }
+                return false;
+            }
+            catch { return false; }
+        }
+
         public static int CountBuildings(string id)
         {
             try

@@ -25,6 +25,7 @@ def _load_sibling_module(name):
 gm_systems = _load_sibling_module("gm_systems")
 gm_devops = _load_sibling_module("gm_devops")
 gm_plans = _load_sibling_module("gm_plans")     # task #25: plans/laws persistence
+gm_colony = _load_sibling_module("gm_colony")   # colony-level strategic status (dashboard gap #A)
 
 class _GmCtx:
     """Late-bound view of this module's globals for gm_systems, robust to
@@ -2204,6 +2205,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         if gm_plans.dispatch(self, GM_CTX, "GET", path, query=query, payload=None):
             return
+        if gm_colony.dispatch(self, GM_CTX, "GET", path, query=query, payload=None):
+            return
         self._send_json(404, {"error": "not found"})
 
     def do_POST(self):
@@ -3214,6 +3217,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if gm_devops.dispatch(self, GM_CTX, "POST", path, query=None, payload=payload):
             return
         if gm_plans.dispatch(self, GM_CTX, "POST", path, query=None, payload=payload):
+            return
+        if gm_colony.dispatch(self, GM_CTX, "POST", path, query=None, payload=payload):
             return
         self._send_json(404, {"error": "not found"})
 

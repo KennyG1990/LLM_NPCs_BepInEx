@@ -15,6 +15,7 @@ namespace GoingMedieval.LLM_NPCs
         public const string AutonomousChatter   = "autonomous/chatter";
         public const string MemorySummarization = "memory/summarization"; // uses npc_decisions model
         public const string NpcDecisions        = "npc/decisions";
+        public const string ColonyAdvisor       = "colony/advisor";        // overseer narrative nudge; task "adviser"
     }
 
     public class LLMTraceMetadata

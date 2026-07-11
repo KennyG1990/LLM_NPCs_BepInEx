@@ -4,17 +4,22 @@ METHODS:
   remove_OnParamsChangedEvent(Action value,)
   DeepCopy()
   get_HitPointsPercent()
+  get_RepairHitPointsPercent()
   get_FreshnessPercent()
+  get_ForbiddenAnimalTypes()
   get_Quality()
   get_AllowedResourceTypes()
   get_DefaultAllowedResources()
   AllowsAnyResourceFromCategory(ResourceCategory category,)
-  IsValid(ResourceInstance resource,)
+  IsValid(ResourceInstance resource,HitpointsPercentRangeType hitpointsPercentRangeType,)
   IsValid(Resource blueprint,)
   ToString()
+  IsAnimalTypeAllowed(AnimalType animalType,)
   IsBlueprintAllowed(Resource blueprint,)
   IsBlueprintAllowed(String id,)
   HasGroupIdentifierEnabled(String id,)
+  AddAllowedAnimalType(AnimalType animalType,)
+  RemoveAllowedAnimalType(AnimalType animalType,)
   AddAllowedResource(String blueprintId,)
   AddAllowedResource(Resource blueprint,)
   CacheDefaultAllowedResources(Resource blueprint,)
@@ -28,18 +33,21 @@ METHODS:
   ClearAllowedResourceTypes()
   SetQuality(IntRange quality,)
   SetHitPointsPercent(IntRange hp,)
+  SetRepairHitPointsPercent(IntRange hp,)
   SetFreshnessPercent(IntRange freshness,)
   OnBeforeSerialize()
   OnAfterDeserialize()
   ParametersChanged()
   Serialize(FVSerializer serializer,)
-  <ParametersChanged>b__46_0()
+  <ParametersChanged>b__56_0()
 FIELDS:
   IntRange hitPointsPercent = Range[0, 100]
+  IntRange repairHitPointsPercent = Range[0, 100]
+  HashSet`1 forbiddenAnimalTypes count=0 sample=[]
   IntRange quality = Range[1, 6]
   IntRange freshnessPercent = Range[0, 100]
-  List`1 allowedResourceTypesSave count=2910 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
-  HashSet`1 allowedResourceTypes count=2910 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
-  List`1 allowedByBlueprintSave count=2910 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
-  HashSet`1 defaultAllowedResources count=2910 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
+  List`1 allowedResourceTypesSave count=2911 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
+  HashSet`1 allowedResourceTypes count=2911 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
+  List`1 allowedByBlueprintSave count=2911 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
+  HashSet`1 defaultAllowedResources count=2911 sample=[redcurrant,blackberry,sloe,gooseberry,cabbage,barley,beet,carrot,apple,quince,damson,mulberrie,]
   Action OnParamsChangedEvent = System.Action

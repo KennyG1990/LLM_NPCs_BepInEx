@@ -1,0 +1,886 @@
+EVENT SYSTEM TYPE SCAN — 7/11/2026 2:01:42 AM
+RaidPointOfInterestManager
+    Boolean TryGetPointOfInterest(CreatureBase creature, Vector3& point)
+    Void Dispose()
+BuildingsRaidPointsFactor
+    Void InitAfterLoad()
+    Void Dispose()
+    Void Serialize(FVSerializer serializer)
+CombatUnitRaidPointsFactor
+    Void InitAfterLoad()
+    Void Dispose()
+    Void Serialize(FVSerializer serializer)
+RaidPointsFactor
+    Void add_OnPointsChanged(Action value)
+    Void remove_OnPointsChanged(Action value)
+    Single get_MaxPoints()
+    Single get_CurrentPoints()
+    Void set_CurrentPoints(Single value)
+    String get_LocalizedNamePlayer()
+    String get_LocalizedNameEnemy()
+    Void Dispose()
+    Void InitAfterLoad()
+    Void Serialize(FVSerializer serializer)
+    PROP Single MaxPoints
+    PROP Single CurrentPoints
+    PROP String LocalizedNamePlayer
+    PROP String LocalizedNameEnemy
+RaidUtil
+    List`1 CreateFactors(ActiveRaidInfo raidInfo, IEnumerable`1 units, Boolean isSecondMap, Boolean buildingsOwnedByThisSide)
+    List`1 CreateEndConditions(ActiveRaidInfo raid, IEnumerable`1 units)
+    ValueTuple`2 CalculateNormalizedPoints(List`1 factors)
+    Void FillTooltipLines(List`1 factors, Single allFactorsMaxPoints, List`1 outputLines, Boolean isPlayer)
+Raid.Config.RaidSpawnSettings
+    Int32 get_SiegeVictoriesInRowCount()
+    Single get_SiegeMinPointsForSiegeWeapons()
+    SiegePathfinderPenaltyModifiers get_StandardSiegePathfinderSettings()
+    SiegePathfinderPenaltyModifiers get_HarderSiegePathfinderSettings()
+    String GetID()
+    PROP Int32 SiegeVictoriesInRowCount
+    PROP Single SiegeMinPointsForSiegeWeapons
+    PROP SiegePathfinderPenaltyModifiers StandardSiegePathfinderSettings
+    PROP SiegePathfinderPenaltyModifiers HarderSiegePathfinderSettings
+Raid.Config.RaidSpawnSettings+SiegeRaidSettings
+    Int32 get_SiegeVictoriesInRowCount()
+    Single get_SiegeMinPointsForSiegeWeapons()
+    PROP Int32 SiegeVictoriesInRowCount
+    PROP Single SiegeMinPointsForSiegeWeapons
+Raid.Config.RaidSpawnSettingsData
+CommanderAI.BTConditions.IsRaidHalfDeadBTCondition
+NSMedieval.RaidController
+    Void add_RaidSpawnedEvent(RaidSpawned value)
+    Void remove_RaidSpawnedEvent(RaidSpawned value)
+    Void add_RaidEndedEvent(RaidDelegate value)
+    Void remove_RaidEndedEvent(RaidDelegate value)
+    Void add_RaidAttackEngageEvent(RaidDelegate value)
+    Void remove_RaidAttackEngageEvent(RaidDelegate value)
+    Void add_OnWorkersWonRaidEvent(Action value)
+    Void remove_OnWorkersWonRaidEvent(Action value)
+    Void add_OnWorkersLostRaidEvent(Action value)
+    Void remove_OnWorkersLostRaidEvent(Action value)
+    Void add_RaidTieEvent(Action value)
+    Void remove_RaidTieEvent(Action value)
+    Void OnRaidSpawned(ActiveRaidInfo info, List`1 enemies)
+    Void OnRaidEnded(ActiveRaidInfo info)
+    Void OnRaidAttackEngage(ActiveRaidInfo info)
+    Void OnWorkersWonRaid()
+    Void OnWorkersLostRaid()
+    Void OnRaidTie()
+NSMedieval.RaidController+RaidSpawned
+    Void Invoke(ActiveRaidInfo info, List`1 enemies)
+    IAsyncResult BeginInvoke(ActiveRaidInfo info, List`1 enemies, AsyncCallback callback, Object object)
+    Void EndInvoke(IAsyncResult result)
+NSMedieval.RaidController+RaidDelegate
+    Void Invoke(ActiveRaidInfo info)
+    IAsyncResult BeginInvoke(ActiveRaidInfo info, AsyncCallback callback, Object object)
+    Void EndInvoke(IAsyncResult result)
+NSMedieval.Tutorial.RaidTutorialStep
+    Void BeginStep()
+NSMedieval.StatsSystem.StatsEventController
+    Void RegisterListener(StatEventType eventType, StatEventCallback method)
+    Void RegisterListener(StatEventType eventType, StatType statType, StatEventCallback method)
+    Void RemoveListener(StatEventCallback method)
+    Void FireEvent(StatEventType eventType, Object data)
+    Void Dispose()
+NSMedieval.PlayerTriggeredEventSystem.PlayerTriggeredEventManager
+    PlayerTriggeredEventInstance get_EventToStart()
+    PlayerTriggeredEventInstance get_CurrentEvent()
+    Void add_EventDiscardedEvent(Action value)
+    Void remove_EventDiscardedEvent(Action value)
+    Void add_EventStartedEvent(Action`1 value)
+    Void remove_EventStartedEvent(Action`1 value)
+    Void add_EventEndedEvent(Action`1 value)
+    Void remove_EventEndedEvent(Action`1 value)
+    Void add_EventViewShownEvent(Action value)
+    Void remove_EventViewShownEvent(Action value)
+    Void ShowView()
+    Boolean CanShowView(String eventId, BaseBuildingInstance targetBuilding, Boolean isSilent)
+    Void CancelEventPrep()
+    Void RunEvent()
+    Void EndEvent()
+    Boolean CanEndWithoutPenalty()
+    Void OnEndEventClick()
+    Boolean IsInEventRoom(BaseBuildingInstance furnitureInstance)
+    Boolean IsEventRunning()
+    Boolean IsAnotherEventRunning(String eventId)
+    Boolean IsAnimalAtEvent(IEventParticipant eventParticipant)
+    Boolean IsAtEvent(IEventParticipant eventParticipant)
+    PROP PlayerTriggeredEventInstance EventToStart
+    PROP PlayerTriggeredEventInstance CurrentEvent
+NSMedieval.Modding.ScenarioModInstance
+    Void UpdateData()
+    Void Dispose()
+NSMedieval.Goap.AnimalRaidGoapAgent
+    AnimatedAgentView GetView()
+    Void Dispose()
+NSMedieval.Goap.BardVisitorAgent
+    AnimatedAgentView GetView()
+    Void Dispose()
+NSMedieval.Goap.FriendlyVisitorGoapAgent
+    Void Dispose()
+    AnimatedAgentView GetView()
+NSMedieval.Goap.PilgrimVisitorAgent
+    AnimatedAgentView GetView()
+    Void Dispose()
+NSMedieval.Goap.PriestVisitorAgent
+    AnimatedAgentView GetView()
+    Void Dispose()
+NSMedieval.Goap.ShamanVisitorAgent
+    AnimatedAgentView GetView()
+    Void Dispose()
+NSMedieval.Goap.Goals.AnimalRaidIdleGoal
+    Boolean CanStart(Boolean isForced)
+    Boolean AgentTypeCheck()
+NSMedieval.Goap.Goals.BardVisitorGoal
+    Void Start()
+NSMedieval.Goap.Goals.PriestVisitorGoal
+    Void Start()
+NSMedieval.Goap.Goals.RoleVisitorGoal
+    Void Start()
+    Boolean CanStart(Boolean isForced)
+    Boolean AgentTypeCheck()
+    Void EndGoalWith(GoalCondition condition)
+NSMedieval.Goap.Goals.ShamanVisitorGoal
+    Void Start()
+NSMedieval.Goap.Goals.VisitorPilgrimIdleGoal
+    Boolean AgentTypeCheck()
+    Boolean CanStart(Boolean isForced)
+NSMedieval.GameEventSystem.GameEventBranchingPhaseBase
+    Void Dispose()
+    GameEventPhaseBase Tick()
+    Void Serialize(FVSerializer serializer)
+NSMedieval.GameEventSystem.GameEventInstance
+    Boolean get_HasEnded()
+    List`1 get_WarningTooltipPrefixLines()
+    GameEvent get_Blueprint()
+    String get_ReplaceWeatherText()
+    Void Dispose()
+    Boolean CanStart()
+    Boolean Start()
+    Void OnLoaded(Boolean fromSave)
+    Void ForceEnd()
+    Void SetBlueprint(GameEvent blueprintEvent)
+    Void OnEnd()
+    Void UpdateWarningMessageTooltip()
+    SortedDictionary`2 GetPossibleEnemiesList()
+    DialogContent GetDialogContent(Int32 dialogIndex)
+    DialogContent GetDialogContent(String dialogId)
+    String GetEventTitle(DialogContent dialogContent)
+    String GetEventName(DialogContent dialogContent, BodyType bodyType)
+    String GetEventInfo(DialogContent dialogContent)
+    String GetEventImagePath(DialogContent dialogContent)
+    String ProcessLocalizedButtonText(String buttonText)
+    Void Serialize(FVSerializer serializer)
+    Void FillAgentsLeavingTooltip(TooltipData tooltipData)
+    PROP Boolean HasEnded
+    PROP List`1 WarningTooltipPrefixLines
+    PROP GameEvent Blueprint
+    PROP String ReplaceWeatherText
+NSMedieval.GameEventSystem.GameEventPhaseBase
+    Void InitEventInstance(GameEventInstance eventInstance)
+    Boolean OnStart()
+    Void OnLoaded(Boolean fromSave)
+    Void OnEnd()
+    GameEventPhaseBase Tick()
+    String ToString()
+    Void Dispose()
+    Void Serialize(FVSerializer serializer)
+NSMedieval.GameEventSystem.GameEventStateMachine
+    Boolean get_HasStarted()
+    Boolean get_HasEnded()
+    Void Start(GameEventPhaseBase firstPhase)
+    Void OnLoaded(Boolean fromSave)
+    Void Tick()
+    Void ForceEnd()
+    Void SetEventInstance(GameEventInstance eventInstance)
+    Void Dispose()
+    Void Serialize(FVSerializer serializer)
+    PROP Boolean HasStarted
+    PROP Boolean HasEnded
+NSMedieval.GameEventSystem.GameEventUtil
+    Boolean TryPurchaseEnemies(String factionBlueprintId, Int32 wealthPoints, List`1& enemies, List`1& siegeWeapons, Boolean& isSiege, Boolean isAmbush)
+    Boolean TryPurchaseEnemiesForceSiege(String factionBlueprintId, Int32 wealthPoints, List`1& enemies, List`1& siegeWeapons)
+    DialogContent BuildDialogContent(GameEventInstance eventInstance, Int32 dialogIndex)
+    DialogContent BuildDialogContent(GameEventInstance eventInstance, DialogContent eventDialogContent)
+    UInt32 PublishNews(GameEventInstance eventInstance, Int32 dialogIndex)
+    UInt32 PublishNews(GameEventInstance eventInstance, String dialogId)
+    NewsData BuildNewsData(GameEventInstance eventInstance, String dialogId)
+    NewsData BuildNewsData(GameEventInstance eventInstance, Int32 dialogIndex)
+NSMedieval.GameEventSystem.GameEventLinearPhaseBase
+    Void Dispose()
+    GameEventPhaseBase Tick()
+    GameEventLinearPhaseBase LinkNextPhase(GameEventPhaseBase nextPhase)
+    Void Serialize(FVSerializer serializer)
+NSMedieval.GameEventSystem.RaiderBlueprintId
+    RaiderType get_Type()
+    String get_Id()
+    Nullable`1 get_RandomSeed()
+    Void set_RandomSeed(Nullable`1 value)
+    IEnemyPurchaseUnit FindBlueprint()
+    Void Serialize(FVSerializer serializer)
+    PROP RaiderType Type
+    PROP String Id
+    PROP Nullable`1 RandomSeed
+NSMedieval.GameEventSystem.RaiderBlueprintId+RaiderType
+NSMedieval.GameEventSystem.GameEvent
+    List`1 get_SkipIfWeatherEventsRunning()
+    GameEvent get_DefaultInstance()
+    String get_Category()
+    List`1 get_Stats()
+    WoundsSetting get_Wounds()
+    List`1 get_Equipment()
+    String get_Prefab()
+    List`1 get_LightningStrikeChance()
+    FloatRange get_ReligionRange()
+    IntRange get_NpcsCountRange()
+    FloatRange get_DurationHours()
+    FloatRange get_DamageRange()
+    FloatRange get_DamageHitPoints()
+    FloatRange get_CreatureDamageHitPoints()
+    FloatRange get_GroundDamageHitPoints()
+    String get_AnimationLayer()
+    String get_EndGameObjective()
+    String get_EndGameObjectiveTaskToComplete()
+    FloatRange get_Percentage()
+    FloatRange get_TemperatureRange()
+    FloatRange get_TemperatureRangeNight()
+    WarningMessageSettings get_WarningMessage()
+    Single get_StartFireChance()
+    IntRange get_StashMarkerDurationRangeMinutes()
+    IReadOnlyList`1 get_StashMarkerMapIds()
+    IntRange get_StashMarkerSpawnDistanceRange()
+    Single get_BeggarStashMarkerSpawnChance()
+    Single get_TraderGiftStashMarkerSpawnChance()
+    Boolean get_TemperatureAdditive()
+    String get_EnableKeywordOnStart()
+    String get_ChatGraphId()
+    HitEffector[] get_OnHitEffectors()
+    List`1 get_Effectors()
+    String get_WeatherTextKey()
+    HashSet`1 get_Friendliness()
+    Single get_GenderDistribution()
+    String get_MessageStart()
+    String get_MessageEnd()
+    String get_MessageEndAlternative()
+    IntRange get_Count()
+    PROP List`1 SkipIfWeatherEventsRunning
+    PROP GameEvent DefaultInstance
+    PROP String Category
+    PROP List`1 Stats
+    PROP WoundsSetting Wounds
+    PROP List`1 Equipment
+    PROP String Prefab
+    PROP List`1 LightningStrikeChance
+    PROP FloatRange ReligionRange
+    PROP IntRange NpcsCountRange
+    PROP FloatRange DurationHours
+    PROP FloatRange DamageRange
+    PROP FloatRange DamageHitPoints
+    PROP FloatRange CreatureDamageHitPoints
+    PROP FloatRange GroundDamageHitPoints
+    PROP String AnimationLayer
+    PROP String EndGameObjective
+    PROP String EndGameObjectiveTaskToComplete
+    PROP FloatRange Percentage
+    PROP FloatRange TemperatureRange
+    PROP FloatRange TemperatureRangeNight
+    PROP WarningMessageSettings WarningMessage
+    PROP Single StartFireChance
+    PROP IntRange StashMarkerDurationRangeMinutes
+    PROP IReadOnlyList`1 StashMarkerMapIds
+NSMedieval.GameEventSystem.GameEvent+RaidOutcomeGlobalStatModifier
+    String get_GlobalStat()
+    Single get_AddValue()
+    RaidStatus get_RaidStatus()
+    PROP String GlobalStat
+    PROP Single AddValue
+    PROP RaidStatus RaidStatus
+NSMedieval.GameEventSystem.GameEventSystem
+    Action`1 get_EventStart()
+    Void set_EventStart(Action`1 value)
+    List`1 get_RunningEvents()
+    Boolean StartEvent(String eventId)
+    Boolean IsBlockingEventRunning()
+    Void AddToRunningEvents(GameEventInstance eventInstanceToAdd)
+    Void RemoveFromRunningEvents(GameEventInstance eventInstanceToRemove)
+    Boolean IsEventRunning(String eventID)
+    Boolean IsBlockingObjectiveButton()
+    String RunningEventsWeatherTextKey()
+    PROP Action`1 EventStart
+    PROP List`1 RunningEvents
+NSMedieval.GameEventSystem.GameEventSystemController
+    Void add_GameEventOptionChosen(OptionChosenDelegate value)
+    Void remove_GameEventOptionChosen(OptionChosenDelegate value)
+    Void add_RaidEventEnded(Action`1 value)
+    Void remove_RaidEventEnded(Action`1 value)
+    Void add_RaidEventStarted(RaidStartedDelegate value)
+    Void remove_RaidEventStarted(RaidStartedDelegate value)
+    Void add_GameEventUnlockedEvent(Action`1 value)
+    Void remove_GameEventUnlockedEvent(Action`1 value)
+    Void add_NpcArrivedToEventEvent(Action`1 value)
+    Void remove_NpcArrivedToEventEvent(Action`1 value)
+    Void RaidStarted(Boolean isSiege, List`1 enemies, String settingsCategory, Int32 raidId)
+    Void RaidEnded(ActiveRaidInfo info)
+    Void EventStarted(GameEventInstance eventInstance)
+    Void EventEnded(GameEventInstance eventInstance)
+    Void EventOptionChosen(GameEventInstance eventInstance, Int32 dialogShowingIndex)
+    Void GameEventUnlocked(EventBaseModel gameEventUnlocked)
+    Void NpcArrivedToEvent(String fromEvent)
+NSMedieval.GameEventSystem.GameEventSystemController+RaidStartedDelegate
+    Void Invoke(Boolean isSiege, List`1 enemies, String settingsCategory, Int32 raidId)
+    IAsyncResult BeginInvoke(Boolean isSiege, List`1 enemies, String settingsCategory, Int32 raidId, AsyncCallback callback, Object object)
+    Void EndInvoke(IAsyncResult result)
+NSMedieval.GameEventSystem.EventGroup+<get_GameEvents>d__30
+NSMedieval.GameEventSystem.GameEventOptionEffect
+NSMedieval.GameEventSystem.LastRaidInfo
+    RaidVariation get_Variation()
+    Void set_Variation(RaidVariation value)
+    Boolean get_FirstRaid()
+    Void set_FirstRaid(Boolean value)
+    Boolean get_IsMeleeDamageTaken()
+    Void set_IsMeleeDamageTaken(Boolean value)
+    Boolean get_IsDoorDamageTaken()
+    Void set_IsDoorDamageTaken(Boolean value)
+    Boolean get_IsDoorDestroyed()
+    Void set_IsDoorDestroyed(Boolean value)
+    Boolean get_HasDoor()
+    Void set_HasDoor(Boolean value)
+    Boolean get_HasHeavyUnit()
+    Void set_HasHeavyUnit(Boolean value)
+    Int32 get_NoMeleeDamageInRow()
+    Void set_NoMeleeDamageInRow(Int32 value)
+    Int32 get_VictoriesInRow()
+    Void set_VictoriesInRow(Int32 value)
+    Boolean get_ShouldForceSiegeWeaponRaid()
+    Void Reset()
+    Void Serialize(FVSerializer serializer)
+    PROP RaidVariation Variation
+    PROP Boolean FirstRaid
+    PROP Boolean IsMeleeDamageTaken
+    PROP Boolean IsDoorDamageTaken
+    PROP Boolean IsDoorDestroyed
+    PROP Boolean HasDoor
+    PROP Boolean HasHeavyUnit
+    PROP Int32 NoMeleeDamageInRow
+    PROP Int32 VictoriesInRow
+    PROP Boolean ShouldForceSiegeWeaponRaid
+NSMedieval.GameEventSystem.LastRaidInfo+RaidVariation
+NSMedieval.GameEventSystem.RaidEnemySelector
+    RaidVariation get_OverrideRaidVariation()
+    Void set_OverrideRaidVariation(RaidVariation value)
+    Boolean PurchaseBodyGuards(Int32& pointsToSpend, List`1& enemiesToSpawn, String& enemyCategory)
+    Boolean PurchaseEnemies(Int32 wealthPoints, List`1& enemiesToSpawn, List`1& siegeWeaponsInventory, String enemyCategory, Boolean forceSiegeWeaponRaid, Boolean isAmbush)
+    Boolean PurchaseEnemiesForAnimalRaid(List`1& enemiesToSpawn, GameEvent animalRaid)
+    Boolean TryPurchaseEnemies(String factionId, WorldMapPlace battleMapPlace, List`1& enemiesToSpawn)
+    PROP RaidVariation OverrideRaidVariation
+NSMedieval.GameEventSystem.Events.IRaidPhaseDataHolder
+    WorldMapPlace get_BattleMapPlace()
+    VillagePlace get_RaiderOriginVillage()
+    FactionInstance get_RaiderFactionInstance()
+    ActiveRaidInfo get_CachedRaidInfo()
+    Void set_CachedRaidInfo(ActiveRaidInfo value)
+    RaiderBlueprintId[] get_EnemyBlueprintIds()
+    SiegeWeaponComponentBlueprint[] get_SiegeWeaponBlueprints()
+    Boolean get_IsSiege()
+    List`1 get_OverrideRaidSpawnPositions()
+    Void set_OverrideRaidSpawnPositions(List`1 value)
+    PROP WorldMapPlace BattleMapPlace
+    PROP VillagePlace RaiderOriginVillage
+    PROP FactionInstance RaiderFactionInstance
+    PROP ActiveRaidInfo CachedRaidInfo
+    PROP RaiderBlueprintId[] EnemyBlueprintIds
+    PROP SiegeWeaponComponentBlueprint[] SiegeWeaponBlueprints
+    PROP Boolean IsSiege
+    PROP List`1 OverrideRaidSpawnPositions
+NSMedieval.GameEventSystem.Events.MultiRaidEvent
+    WorldMapPlace get_BattleMapPlace()
+    VillagePlace get_RaiderOriginVillage()
+    FactionInstance get_RaiderFactionInstance()
+    ActiveRaidInfo get_CachedRaidInfo()
+    Void set_CachedRaidInfo(ActiveRaidInfo value)
+    RaiderBlueprintId[] get_EnemyBlueprintIds()
+    SiegeWeaponComponentBlueprint[] get_SiegeWeaponBlueprints()
+    Boolean get_IsSiege()
+    List`1 get_OverrideRaidSpawnPositions()
+    Void set_OverrideRaidSpawnPositions(List`1 value)
+    Boolean CanStart()
+    Void OnLoaded(Boolean fromSave)
+    Void SetBlueprint(GameEvent blueprintEvent)
+    String GetEventInfo(DialogContent dialogContent)
+    String GetEventTitle(DialogContent dialogContent)
+    String GetEventName(DialogContent dialogContent, BodyType bodyType)
+    String GetEventImagePath(DialogContent dialogContent)
+    SortedDictionary`2 GetPossibleEnemiesList()
+    Void Serialize(FVSerializer serializer)
+    PROP WorldMapPlace BattleMapPlace
+    PROP VillagePlace RaiderOriginVillage
+    PROP FactionInstance RaiderFactionInstance
+    PROP ActiveRaidInfo CachedRaidInfo
+    PROP RaiderBlueprintId[] EnemyBlueprintIds
+    PROP SiegeWeaponComponentBlueprint[] SiegeWeaponBlueprints
+    PROP Boolean IsSiege
+    PROP List`1 OverrideRaidSpawnPositions
+NSMedieval.GameEventSystem.Events.RaidEvent
+    List`1 get_OverrideRaidSpawnPositions()
+    Void set_OverrideRaidSpawnPositions(List`1 value)
+    RaiderBlueprintId[] get_EnemyBlueprintIds()
+    SiegeWeaponComponentBlueprint[] get_SiegeWeaponBlueprints()
+    Boolean get_IsSiege()
+    WorldMapPlace get_BattleMapPlace()
+    VillagePlace get_RaiderOriginVillage()
+    FactionInstance get_RaiderFactionInstance()
+    ActiveRaidInfo get_CachedRaidInfo()
+    Void set_CachedRaidInfo(ActiveRaidInfo value)
+    Boolean CanStart()
+    Void OnLoaded(Boolean fromSave)
+    Void SetBlueprint(GameEvent blueprintEvent)
+    String GetEventInfo(DialogContent dialogContent)
+    String GetEventTitle(DialogContent dialogContent)
+    String GetEventName(DialogContent dialogContent, BodyType bodyType)
+    String GetEventImagePath(DialogContent dialogContent)
+    SortedDictionary`2 GetPossibleEnemiesList()
+    Void Serialize(FVSerializer serializer)
+    PROP List`1 OverrideRaidSpawnPositions
+    PROP RaiderBlueprintId[] EnemyBlueprintIds
+    PROP SiegeWeaponComponentBlueprint[] SiegeWeaponBlueprints
+    PROP Boolean IsSiege
+    PROP WorldMapPlace BattleMapPlace
+    PROP VillagePlace RaiderOriginVillage
+    PROP FactionInstance RaiderFactionInstance
+    PROP ActiveRaidInfo CachedRaidInfo
+NSMedieval.GameEventSystem.Events.RaidPhaseStatus
+NSMedieval.GameEventSystem.Events.RaidPhase
+    RaiderBlueprintId[] get_EnemyBlueprintIds()
+    SiegeWeaponComponentBlueprint[] get_SiegeWeaponBlueprints()
+    Boolean get_IsSiege()
+    ActiveRaidInfo get_CachedRaidInfo()
+    Void set_CachedRaidInfo(ActiveRaidInfo value)
+    VillagePlace get_RaiderOriginPlace()
+    FactionInstance get_RaiderFactionInstance()
+    Void Dispose()
+    Boolean OnStart()
+    Void OnLoaded(Boolean fromSave)
+    Void OnEnd()
+    RaidPhase NextPhaseOnVictory(GameEventPhaseBase phase)
+    RaidPhase NextPhaseOnDefeat(GameEventPhaseBase phase)
+    RaidPhase NextPhaseOnTie(GameEventPhaseBase phase)
+    Void Serialize(FVSerializer serializer)
+    PROP RaiderBlueprintId[] EnemyBlueprintIds
+    PROP SiegeWeaponComponentBlueprint[] SiegeWeaponBlueprints
+    PROP Boolean IsSiege
+    PROP ActiveRaidInfo CachedRaidInfo
+    PROP VillagePlace RaiderOriginPlace
+    PROP FactionInstance RaiderFactionInstance
+NSMedieval.GameEventSystem.Events.BardVisitorEvent
+NSMedieval.GameEventSystem.Events.EndGameEvent
+    List`1 get_NPCs()
+    Void Dispose()
+    Void Serialize(FVSerializer serializer)
+    Void FillAgentsLeavingTooltip(TooltipData tooltipData)
+    PROP List`1 NPCs
+NSMedieval.GameEventSystem.Events.IVisitorDataHolder
+    HumanoidInstance get_Visitor()
+    PROP HumanoidInstance Visitor
+NSMedieval.GameEventSystem.Events.IVisitorEvent
+    Boolean Contains(HumanoidInstance humanoidInstance)
+NSMedieval.GameEventSystem.Events.PriestVisitorEvent
+NSMedieval.GameEventSystem.Events.RoleVisitorEvent
+    Void Dispose()
+    HumanoidInstance get_Visitor()
+    Boolean Contains(HumanoidInstance npcInstance)
+    Boolean CanStart()
+    String GetEventInfo(DialogContent dialogContent)
+    String GetEventName(DialogContent dialogContent, BodyType bodyType)
+    Void Serialize(FVSerializer serializer)
+    PROP HumanoidInstance Visitor
+NSMedieval.GameEventSystem.Events.RoleVisitorVisitPhase
+    HumanoidInstance get_Visitor()
+    Void Dispose()
+    Boolean OnStart()
+    Void OnLoaded(Boolean fromSave)
+    Void OnEnd()
+    Void Serialize(FVSerializer serializer)
+    PROP HumanoidInstance Visitor
+NSMedieval.GameEventSystem.Events.ShamanVisitorEvent
+NSMedieval.DevConsole.CommandGenerateRaidSpawnPoints
+    String get_Command()
+    String get_Description()
+    String get_Help()
+    PROP String Command
+    PROP String Description
+    PROP String Help
+NSMedieval.DevConsole.CommandSpawnBardVisitor
+    String get_Command()
+    String get_Description()
+    String get_Help()
+    PROP String Command
+    PROP String Description
+    PROP String Help
+NSMedieval.DevConsole.CommandSpawnPriestVisitor
+    String get_Command()
+    String get_Description()
+    String get_Help()
+    PROP String Command
+    PROP String Description
+    PROP String Help
+NSMedieval.DevConsole.CommandSpawnShamanVisitor
+    String get_Command()
+    String get_Description()
+    String get_Help()
+    PROP String Command
+    PROP String Description
+    PROP String Help
+NSMedieval.CommanderAI.BehaviourTreeTasks.OpenDoorsAndSendRaidersBTAction
+NSMedieval.CommanderAI.BehaviourTreeTasks.PickBestRaidTargetBTAction
+NSMedieval.CombatAi.VisitorRetreatAiActionGoal
+    Boolean CanStart(Boolean isForced)
+NSMedieval.Manager.NPCManager+<GetByRaidId>d__28
+NSMedieval.Manager.ActiveRaidInfo
+    Void add_OnBattleScalesChanged(Action value)
+    Void remove_OnBattleScalesChanged(Action value)
+    VillageMap get_Map()
+    Single get_BattleScalesBalance()
+    RaidStatus get_RaidStatus()
+    IReadOnlyList`1 get_BattleScalesTooltipLines()
+    List`1 get_ResourcesStolenByVictor()
+    String get_SettlerTakenByVictorTextLocalized()
+    Void set_SettlerTakenByVictorTextLocalized(String value)
+    Cooldown get_RaidEngageDelay()
+    Void set_RaidEngageDelay(Cooldown value)
+    Boolean get_Won()
+    Boolean get_HasEnded()
+    Boolean get_HasCharged()
+    Void set_HasCharged(Boolean value)
+    Boolean get_HasEngaged()
+    Void set_HasEngaged(Boolean value)
+    Raid get_Blueprint()
+    Int32 get_RaidId()
+    Int32 get_SpawnCount()
+    Boolean get_IsSiege()
+    List`1 get_WorkersDied()
+    List`1 get_EnemiesDied()
+    List`1 get_EnemiesSurvived()
+    List`1 get_BuildingsDestroyed()
+    Dictionary`2 get_WorkersAttacked()
+    Dictionary`2 get_DamageTaken()
+    Dictionary`2 get_HitsBlocked()
+    Int32 get_TrebuchetsCount()
+    Void set_TrebuchetsCount(Int32 value)
+    Int64 get_StartTime()
+    UInt32 get_CommanderAgentId()
+    Void set_CommanderAgentId(UInt32 value)
+    String get_ParentEventId()
+    Void InitAfterLoad()
+    Void AddToWorkersAttacked(HumanoidInstance humanoidInstance, Single damage)
+    Void AddHitBlocked(HumanoidInstance humanoidInstance, Single damageBlocked)
+    Void AddDamageTaken(HumanoidInstance humanoidInstance, Single damageTaken)
+    Void GenerateEnemiesSurvivedList()
+    ActiveRaidInfo GetById(Int32 raidId)
+    PROP VillageMap Map
+    PROP Single BattleScalesBalance
+    PROP RaidStatus RaidStatus
+    PROP IReadOnlyList`1 BattleScalesTooltipLines
+    PROP List`1 ResourcesStolenByVictor
+    PROP String SettlerTakenByVictorTextLocalized
+    PROP Cooldown RaidEngageDelay
+    PROP Boolean Won
+    PROP Boolean HasEnded
+    PROP Boolean HasCharged
+    PROP Boolean HasEngaged
+    PROP Raid Blueprint
+    PROP Int32 RaidId
+    PROP Int32 SpawnCount
+    PROP Boolean IsSiege
+    PROP List`1 WorkersDied
+    PROP List`1 EnemiesDied
+    PROP List`1 EnemiesSurvived
+    PROP List`1 BuildingsDestroyed
+    PROP Dictionary`2 WorkersAttacked
+    PROP Dictionary`2 DamageTaken
+    PROP Dictionary`2 HitsBlocked
+    PROP Int32 TrebuchetsCount
+    PROP Int64 StartTime
+    PROP UInt32 CommanderAgentId
+NSMedieval.Manager.ActiveRaidInfo+CreateRaidEndConditionsDelegate
+    List`1 Invoke(ActiveRaidInfo info, IEnumerable`1 units)
+    IAsyncResult BeginInvoke(ActiveRaidInfo info, IEnumerable`1 units, AsyncCallback callback, Object object)
+    List`1 EndInvoke(IAsyncResult result)
+NSMedieval.Manager.RaidManager
+    Boolean get_IsMeleeDamageTaken()
+    Void set_IsMeleeDamageTaken(Boolean value)
+    Void InitAfterLoad()
+    Void Dispose()
+    ActiveRaidInfo StartRaid(Raid raid, VillagePlace originVillage, FactionInstance factionInstance, String parentEventId, List`1 enemyRandomSeeds, List`1 overrideSpawnPositions, GameEventInstance fromEvent, CreateRaidEndConditionsDelegate createPlayerEndConditions, CreateRaidEndConditionsDelegate createEnemyEndConditions)
+    Boolean RaidInProgress()
+    Void DistributeSpawnPoints(List`1 allNodes, Int32 frontLineCount, Int32 backLineCount, Int32 frontEmptySpaceCount, Int32 backEmptySpaceCount, PooledList`1 outFrontLineSpawnPoints, PooledList`1 outBackLineSpawnPoints, Vector3& armyFaceDirection)
+    PROP Boolean IsMeleeDamageTaken
+NSMedieval.Manager.RaidStatus
+NSMedieval.Manager.RaidEndConditions.RaidEndCondition
+    Boolean get_ShouldEnd()
+    Void InitAfterLoad()
+    Void Dispose()
+    Void Serialize(FVSerializer serializer)
+    PROP Boolean ShouldEnd
+NSMedieval.Repository.GameEventSettingsRepository
+    Void Deserialize()
+NSMedieval.Repository.CropBlightSpotsByRaidPointsData
+NSMedieval.Repository.RaidDefeatSettingsData
+NSMedieval.Repository.RaidMaxPrisonersBySettlersAliveData
+NSMedieval.Repository.RaidSurrenderChanceByPrisonersCountData
+NSMedieval.Repository.RaidSurrenderChanceBySettlersAliveData
+NSMedieval.Repository.ScenarioRepository
+    SerializableIdValuePair[] GetDefaultGameParameters()
+    Scenario GetBlueprintScenario()
+    List`1 GetDefaultScenarios()
+    List`1 GetUserScenarios()
+NSMedieval.State.BardVisitorBehaviour
+    BehaviourType get_BehaviourType()
+    PROP BehaviourType BehaviourType
+NSMedieval.State.PilgrimVisitorBehaviour
+    BehaviourType get_BehaviourType()
+    PROP BehaviourType BehaviourType
+NSMedieval.State.PriestVisitorBehaviour
+    BehaviourType get_BehaviourType()
+    PROP BehaviourType BehaviourType
+NSMedieval.State.RoleVisitorBehaviour
+    String get_IndicatorPrefabName()
+    BehaviourType get_BehaviourType()
+    Void OnSpawn()
+    String GetGoapAgentId()
+    String GetMultiselectName()
+    Void OnTrapTriggered(TrapComponentInstance trap)
+    Void Dispose()
+    Vec3Int GetGridPosition()
+    PROP String IndicatorPrefabName
+    PROP BehaviourType BehaviourType
+NSMedieval.State.ShamanVisitorBehaviour
+    BehaviourType get_BehaviourType()
+    PROP BehaviourType BehaviourType
+NSMedieval.Model.Raid
+    SiegeWeaponComponentBlueprint[] get_SiegeWeapons()
+    Void set_SiegeWeapons(SiegeWeaponComponentBlueprint[] value)
+    Boolean get_IsSiege()
+    Single get_FemaleEnemiesPercent()
+    Void set_FemaleEnemiesPercent(Single value)
+    Int32 get_DontEngageCombatDuration()
+    RaidEnemyInfo[] get_Enemies()
+    Void set_Enemies(RaidEnemyInfo[] value)
+    String get_EquipmentGroup()
+    Void set_EquipmentGroup(String value)
+    Int32 get_RaidID()
+    Int64 get_DelayBeforeAttack()
+    Void set_DelayBeforeAttack(Int64 value)
+    String GetID()
+    Void Serialize(FVSerializer serializer)
+    PROP SiegeWeaponComponentBlueprint[] SiegeWeapons
+    PROP Boolean IsSiege
+    PROP Single FemaleEnemiesPercent
+    PROP Int32 DontEngageCombatDuration
+    PROP RaidEnemyInfo[] Enemies
+    PROP String EquipmentGroup
+    PROP Int32 RaidID
+    PROP Int64 DelayBeforeAttack
+NSMedieval.Model.Raid+RaidEnemyInfo
+    String get_Name()
+    Void set_Name(String value)
+    Void Serialize(FVSerializer serializer)
+    PROP String Name
+NSMedieval.Model.RaidDefeatSettings
+    RaidDefeatSettings get_I()
+    InterpolatedValueList get_SettlementValueToStolenValue()
+    String GetID()
+    PROP RaidDefeatSettings I
+    PROP InterpolatedValueList SettlementValueToStolenValue
+NSMedieval.Model.Scenario
+    WorkerConstraints get_VillagerConstraints()
+    SerializableIdValuePair[] get_StartingResources()
+    SerializableIdValuePair[] get_StartingEquipment()
+    SerializableIdValuePair[] get_StartingStructurePiles()
+    ScenarioAnimalData[] get_StartingAnimals()
+    List`1 get_TechnologyUnlocked()
+    Int32 get_StartSeason()
+    Int32 get_StartHour()
+    LocKeys[] get_LocKeys()
+    String get_ModifiedOnVersion()
+    Boolean get_IsDefault()
+    SerializableIdValuePair[] get_GameParameters()
+    List`1 get_StartMapTypes()
+    Boolean IsAllowedMapType(String mapType)
+    Boolean GetAllowedMapTypes(List`1& allowedMapTypes)
+    FactionFriendlinessOverride[] get_FactionFriendlinessOverrides()
+    String get_StartEventId()
+    String get_StartingEventScheduleId()
+    String get_ImageId()
+    String get_Difficulty()
+    HashSet`1 get_AllowedObjectives()
+    Boolean TryGetFriendlinessRangeOverride(String factionTypeId, FloatRange& range)
+    Boolean TryGetStartEventId(String& eventGroupInstance)
+    String GetID()
+    Byte[] GetWorkerConstraintsHash()
+    Void Serialize(FVSerializer serializer)
+    Void TryMigrate()
+    PROP WorkerConstraints VillagerConstraints
+    PROP SerializableIdValuePair[] StartingResources
+    PROP SerializableIdValuePair[] StartingEquipment
+    PROP SerializableIdValuePair[] StartingStructurePiles
+    PROP ScenarioAnimalData[] StartingAnimals
+    PROP List`1 TechnologyUnlocked
+    PROP Int32 StartSeason
+    PROP Int32 StartHour
+    PROP LocKeys[] LocKeys
+    PROP String ModifiedOnVersion
+    PROP Boolean IsDefault
+    PROP SerializableIdValuePair[] GameParameters
+    PROP List`1 StartMapTypes
+    PROP FactionFriendlinessOverride[] FactionFriendlinessOverrides
+    PROP String StartEventId
+    PROP String StartingEventScheduleId
+    PROP String ImageId
+    PROP String Difficulty
+    PROP HashSet`1 AllowedObjectives
+NSMedieval.Model.ScenarioAnimalData
+    String get_ID()
+    Void set_ID(String value)
+    BodyType get_BodyType()
+    Void set_BodyType(BodyType value)
+    Int32 get_Count()
+    Void set_Count(Int32 value)
+    Int32 get_LifePhaseIndex()
+    Void set_LifePhaseIndex(Int32 value)
+    AnimalType get_AnimalType()
+    Void set_AnimalType(AnimalType value)
+    Void Serialize(FVSerializer serializer)
+    PROP String ID
+    PROP BodyType BodyType
+    PROP Int32 Count
+    PROP Int32 LifePhaseIndex
+    PROP AnimalType AnimalType
+NSMedieval.UI.ScenarioView
+    Void Show()
+NSMedieval.UI.ScenarioEditor.ScenarioConditionGroup
+NSMedieval.UI.ScenarioEditor.ScenarioEditAnimalView
+    Void add_ValueChanged(Action`2 value)
+    Void remove_ValueChanged(Action`2 value)
+    Void SetData(ScenarioAnimalData data)
+    Void SetDefaults(String animalId, IntRange minMaxRange, Int32 currentValue)
+NSMedieval.UI.ScenarioEditor.ScenarioEditController
+    ScenarioSaveData get_Data()
+    Void CreateNewScenario()
+    PROP ScenarioSaveData Data
+NSMedieval.UI.ScenarioEditor.ScenarioEditEntryView
+    Void add_DeleteEntry(Action`1 value)
+    Void remove_DeleteEntry(Action`1 value)
+    SoundButton get_DeleteButton()
+    Void SetDefaults(String labelText)
+    Void SetInfo(String nameKey, String infoKey)
+    PROP SoundButton DeleteButton
+NSMedieval.UI.ScenarioEditor.ScenarioEditEquipmentView
+    Void SetDefaults(String itemId, IntRange minMaxRange, Int32 currentValue)
+NSMedieval.UI.ScenarioEditor.ScenarioEditIntIconView
+    Void SetDefaults(String path, String colorOVerlay, String label, IntRange minMaxRange, Int32 currentValue, String suffix)
+NSMedieval.UI.ScenarioEditor.ScenarioEditIntRangeView
+    Void add_ValueChanged(Action`2 value)
+    Void remove_ValueChanged(Action`2 value)
+    Void SetDefaults(String label, IntRange minMaxRange, IntRange currentValues)
+NSMedieval.UI.ScenarioEditor.ScenarioEditIntView
+    Void add_ValueChanged(Action`2 value)
+    Void remove_ValueChanged(Action`2 value)
+    Int32 GetValue()
+    Void SetDefaults(String label, IntRange minMaxRange, Int32 currentValue, String suffix)
+NSMedieval.UI.ScenarioEditor.ScenarioEditListView
+    Void add_ValueChanged(Action`2 value)
+    Void remove_ValueChanged(Action`2 value)
+    Void SetDefaults(String label, List`1 listValues)
+    Void SetDefaults(String label, List`1 listValues, String options1Label, List`1 options1Values)
+    Void SetDefaults(String label, List`1 listValues, String options1Label, List`1 options1Values, String options2Label, List`1 options2Values)
+    Void SetValue(Int32 listValue, Int32 options1Value, Int32 options2Value)
+NSMedieval.UI.ScenarioEditor.ScenarioEditResourceView
+    Void add_ValueChanged(Action`3 value)
+    Void remove_ValueChanged(Action`3 value)
+    Void SetDefaults(Resource resource, IntRange minMaxRange, Int32 currentValue)
+NSMedieval.UI.ScenarioEditor.ScenarioEditStructurePileView
+    String get_StructurePileID()
+    Void add_ValueChanged(Action`3 value)
+    Void remove_ValueChanged(Action`3 value)
+    Void SetDefaults(String id, IntRange minMaxRange, Int32 currentValue)
+    PROP String StructurePileID
+NSMedieval.UI.ScenarioEditor.ScenarioEditView
+    List`1 get_Constraints()
+    List`1 get_ClothesDistinctIDs()
+    List`1 get_Perks()
+    List`1 get_Resources()
+    List`1 get_ProtoEquipments()
+    List`1 get_StructurePiles()
+    List`1 get_Animals()
+    List`1 get_Technology()
+    List`1 get_StatOverrides()
+    List`1 get_MapTypes()
+    Void CreateScenario()
+    Void EditScenario(Scenario scenario)
+    Void Hide()
+    PROP List`1 Constraints
+    PROP List`1 ClothesDistinctIDs
+    PROP List`1 Perks
+    PROP List`1 Resources
+    PROP List`1 ProtoEquipments
+    PROP List`1 StructurePiles
+    PROP List`1 Animals
+    PROP List`1 Technology
+    PROP List`1 StatOverrides
+    PROP List`1 MapTypes
+NSMedieval.UI.ScenarioEditor.ScenarioSaveRepo
+NSMedieval.UI.ScenarioEditor.ScenarioSaveData
+    List`1 get_TechnologyUnlocked()
+    Void set_TechnologyUnlocked(List`1 value)
+    WorkerConstraints get_VillagerConstraints()
+    Void set_VillagerConstraints(WorkerConstraints value)
+    List`1 get_StartingResources()
+    Void set_StartingResources(List`1 value)
+    List`1 get_StartingEquipment()
+    Void set_StartingEquipment(List`1 value)
+    List`1 get_StartingStructurePiles()
+    Void set_StartingStructurePiles(List`1 value)
+    String get_ID()
+    Void set_ID(String value)
+    Int32 get_StartSeason()
+    Void set_StartSeason(Int32 value)
+    LocKeys[] get_LocKeys()
+    Void set_LocKeys(LocKeys[] value)
+    ScenarioAnimalData[] get_StartingAnimals()
+    Void set_StartingAnimals(ScenarioAnimalData[] value)
+    String get_ModifiedOnGameVersion()
+    Void set_ModifiedOnGameVersion(String value)
+    SerializableIdValuePair[] get_GameParameters()
+    Void set_GameParameters(SerializableIdValuePair[] value)
+    List`1 get_AllowedObjectives()
+    Void set_AllowedObjectives(List`1 value)
+    Int32 get_StartHour()
+    Void set_StartHour(Int32 value)
+    String get_StartEventId()
+    Void set_StartEventId(String value)
+    String get_StartingEventScheduleId()
+    Void set_StartingEventScheduleId(String value)
+    List`1 get_StartMapTypes()
+    Void set_StartMapTypes(List`1 value)
+    String get_ImageId()
+    Void set_ImageId(String value)
+    String get_Difficulty()
+    Void set_Difficulty(String value)
+    PROP List`1 TechnologyUnlocked
+    PROP WorkerConstraints VillagerConstraints
+    PROP List`1 StartingResources
+    PROP List`1 StartingEquipment
+    PROP List`1 StartingStructurePiles
+    PROP String ID
+    PROP Int32 StartSeason
+    PROP LocKeys[] LocKeys
+    PROP ScenarioAnimalData[] StartingAnimals
+    PROP String ModifiedOnGameVersion
+    PROP SerializableIdValuePair[] GameParameters
+    PROP List`1 AllowedObjectives
+    PROP Int32 StartHour
+    PROP String StartEventId
+    PROP String StartingEventScheduleId
+    PROP List`1 StartMapTypes
+    PROP String ImageId
+    PROP String Difficulty

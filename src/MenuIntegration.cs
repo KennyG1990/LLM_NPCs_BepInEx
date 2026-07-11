@@ -23,6 +23,13 @@ namespace GoingMedieval.LLM_NPCs
         private ConfigEntry<bool> _enableFullAutonomyConfig;
         private ConfigEntry<bool> _enableModConfig;
         private ConfigEntry<bool> _logDecisionsConfig;
+        // Per-task model configs (Unit 2). OpenRouter only; Player2 consolidates.
+        private ConfigEntry<string> _modelNpcDecisionsConfig;
+        private ConfigEntry<string> _modelPlayerChatConfig;
+        private ConfigEntry<string> _modelNpcToNpcConfig;
+        private ConfigEntry<string> _modelAdviserConfig;
+        // Which target the next model-list click assigns to. "" = global.
+        private string _assignTarget = "";
 
         // Menu state
         private GameObject _modMenuPanel;
@@ -48,7 +55,11 @@ namespace GoingMedieval.LLM_NPCs
             ConfigEntry<float> decisionIntervalConfig,
             ConfigEntry<bool> enableFullAutonomyConfig,
             ConfigEntry<bool> enableModConfig,
-            ConfigEntry<bool> logDecisionsConfig)
+            ConfigEntry<bool> logDecisionsConfig,
+            ConfigEntry<string> modelNpcDecisionsConfig = null,
+            ConfigEntry<string> modelPlayerChatConfig = null,
+            ConfigEntry<string> modelNpcToNpcConfig = null,
+            ConfigEntry<string> modelAdviserConfig = null)
         {
             _llmClient = llmClient;
             _modelConfig = modelConfig;
@@ -58,6 +69,10 @@ namespace GoingMedieval.LLM_NPCs
             _enableFullAutonomyConfig = enableFullAutonomyConfig;
             _enableModConfig = enableModConfig;
             _logDecisionsConfig = logDecisionsConfig;
+            _modelNpcDecisionsConfig = modelNpcDecisionsConfig;
+            _modelPlayerChatConfig = modelPlayerChatConfig;
+            _modelNpcToNpcConfig = modelNpcToNpcConfig;
+            _modelAdviserConfig = modelAdviserConfig;
 
             LLMNPCsPlugin.Log.LogInfo("[MenuIntegration] Initialized");
             LLMNPCsPlugin.LogToFile("[MenuIntegration] Initialized");
@@ -905,24 +920,53 @@ namespace GoingMedieval.LLM_NPCs
 
                 GUILayout.Label($"Showing {filtered.Count} of {_models.Count} models:");
 
-                _modelScrollPosition = GUILayout.BeginScrollView(_modelScrollPosition, GUILayout.Height(200));
+                // --- Assign-to target selector (Unit 2: per-task models) ---
+                bool openRouter = LLMClient.Provider == "openrouter";
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Assign clicked model to:", GUILayout.Width(150));
+                if (DrawTargetButton("", "Global")) _assignTarget = "";
+                GUI.enabled = openRouter;
+                if (DrawTargetButton("npc_decisions", "Decisions")) _assignTarget = "npc_decisions";
+                if (DrawTargetButton("player_chat", "Player Chat")) _assignTarget = "player_chat";
+                if (DrawTargetButton("npc_to_npc", "NPC<->NPC")) _assignTarget = "npc_to_npc";
+                if (DrawTargetButton("adviser", "Adviser")) _assignTarget = "adviser";
+                if (DrawTargetButton("planner", "Planner")) _assignTarget = "planner";
+                GUI.enabled = true;
+                GUILayout.EndHorizontal();
+
+                if (!openRouter)
+                {
+                    _assignTarget = "";
+                    GUILayout.Label("Player2 provider: every layer shares one model (consolidated). Per-task assignment applies on OpenRouter.");
+                }
+                else
+                {
+                    string tgtName = _assignTarget == "" ? "the Global model" : TaskLabel(_assignTarget);
+                    GUILayout.Label($"Clicking a model below sets: {tgtName}", GetSafeBoldLabelStyle());
+                }
+
+                string activeModelForTarget = CurrentModelForTarget(_assignTarget);
+
+                _modelScrollPosition = GUILayout.BeginScrollView(_modelScrollPosition, GUILayout.Height(180));
                 foreach (var model in filtered)
                 {
                     string label = model.IsFree
                         ? $"[FREE] {model.Name ?? model.Id}  (ctx: {model.ContextLength})"
                         : $"{model.Name ?? model.Id}  (ctx: {model.ContextLength}, {model.PricePerMillion})";
 
-                    bool isSelected = _modelConfig.Value == model.Id;
+                    bool isSelected = activeModelForTarget == model.Id;
                     GUI.backgroundColor = isSelected ? new Color(0.2f, 0.6f, 0.2f) : new Color(0.2f, 0.2f, 0.3f);
 
                     if (GUILayout.Button(label, GUILayout.Height(22)))
                     {
-                        _modelConfig.Value = model.Id;
-                        _llmClient?.SetModel(model.Id);
+                        AssignModelToTarget(_assignTarget, model.Id);
                     }
                 }
                 GUI.backgroundColor = new Color(0.1f, 0.1f, 0.1f, 0.95f);
                 GUILayout.EndScrollView();
+
+                // --- Per-task readout (4 live layers + 2 reserved, greyed) ---
+                DrawPerTaskReadout(openRouter);
             }
             else
             {
@@ -966,6 +1010,111 @@ namespace GoingMedieval.LLM_NPCs
             }
 
             GUILayout.EndArea();
+        }
+
+        // ── Per-task model helpers (Unit 2) ───────────────────────────────
+        private bool DrawTargetButton(string key, string label)
+        {
+            bool active = _assignTarget == key;
+            var prev = GUI.backgroundColor;
+            GUI.backgroundColor = active ? new Color(0.2f, 0.6f, 0.2f) : new Color(0.25f, 0.25f, 0.35f);
+            bool clicked = GUILayout.Button(label, GUILayout.Height(24));
+            GUI.backgroundColor = prev;
+            return clicked;
+        }
+
+        private string TaskLabel(string key)
+        {
+            switch (key)
+            {
+                case "npc_decisions": return "Settler decisions";
+                case "player_chat":   return "Player chat";
+                case "npc_to_npc":    return "NPC-to-NPC banter";
+                case "adviser":       return "Colony adviser";
+                case "planner":       return "Colony planner";
+                default:              return key;
+            }
+        }
+
+        private ConfigEntry<string> TargetConfig(string key)
+        {
+            switch (key)
+            {
+                case "npc_decisions": return _modelNpcDecisionsConfig;
+                case "player_chat":   return _modelPlayerChatConfig;
+                case "npc_to_npc":    return _modelNpcToNpcConfig;
+                case "adviser":       return _modelAdviserConfig;
+                default:              return null;
+            }
+        }
+
+        private string CurrentModelForTarget(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return _modelConfig != null ? _modelConfig.Value : "";
+            var cfg = TargetConfig(key);
+            return cfg != null ? cfg.Value : "";
+        }
+
+        private void AssignModelToTarget(string key, string modelId)
+        {
+            if (string.IsNullOrEmpty(key))
+            {
+                if (_modelConfig != null) _modelConfig.Value = modelId;   // global
+                _llmClient?.SetModel(modelId);
+            }
+            else
+            {
+                var cfg = TargetConfig(key);
+                if (cfg != null) cfg.Value = modelId;
+                LLMClient.TaskModels[key] = modelId;   // live: next call for this task uses it
+            }
+            LLMNPCsPlugin.LogToFile($"[MenuIntegration] assign model '{modelId}' -> {(string.IsNullOrEmpty(key) ? "global" : key)}");
+        }
+
+        private void DrawPerTaskReadout(bool openRouter)
+        {
+            GUILayout.Space(6);
+            GUILayout.Label("Per-task models (OpenRouter):", GetSafeBoldLabelStyle());
+            if (!openRouter)
+                GUILayout.Label("  (inactive — Player2 uses one model for every layer)");
+
+            DrawTaskRow("npc_decisions", "Settler decisions", openRouter);
+            DrawTaskRow("player_chat",   "Player chat",       openRouter);
+            DrawTaskRow("npc_to_npc",    "NPC-to-NPC banter", openRouter);
+            DrawTaskRow("adviser",       "Colony adviser",    openRouter);
+            DrawTaskRow("planner",       "Colony planner",    openRouter);
+
+            // Reserved — no LLM behind this yet (Ken: reserve, greyed).
+            GUI.enabled = false;
+            DrawReservedRow("Chronicle/deaths", "reserved — deterministic today");
+            GUI.enabled = true;
+        }
+
+        private void DrawTaskRow(string key, string label, bool openRouter)
+        {
+            string val = CurrentModelForTarget(key);
+            bool usesGlobal = string.IsNullOrWhiteSpace(val) || val == "player2";
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"{label}:", GUILayout.Width(150));
+            GUILayout.Label(usesGlobal ? "(uses global model)" : val);
+            GUILayout.FlexibleSpace();
+            GUI.enabled = openRouter && !usesGlobal;
+            if (GUILayout.Button("→ global", GUILayout.Width(70), GUILayout.Height(20)))
+            {
+                var cfg = TargetConfig(key);
+                if (cfg != null) cfg.Value = "player2";   // sentinel: fall back to global model
+                LLMClient.TaskModels[key] = "player2";
+            }
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawReservedRow(string label, string note)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"{label}:", GUILayout.Width(150));
+            GUILayout.Label($"[{note}]");
+            GUILayout.EndHorizontal();
         }
 
         private GUIStyle GetSafeBoldLabelStyle()

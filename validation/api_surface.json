@@ -1,6 +1,6 @@
 {
- "save_id": "Kilmarnock",
- "scanned_at": "2026-07-08T20:59:34.1835139Z",
+ "save_id": "Llangefni",
+ "scanned_at": "2026-07-11T06:01:30.0161596Z",
  "type_count": 116,
  "types": [
   {
@@ -138,7 +138,9 @@
     "Int32 get_MaxAmount()",
     "Boolean get_OverrideStackingLimit()",
     "List`1 get_StorableResourceGroups()",
+    "Boolean get_IsEnemyLootable()",
     "List`1 get_ResourceGroups()",
+    "HashSet`1 get_AllUsableResources()",
     "ZonePriority get_ZonePriority()",
     "Single get_RefillPercentageThreshold()",
     "List`1 GetParentGroups()",
@@ -149,7 +151,9 @@
     "Int32 MaxAmount ro",
     "Boolean OverrideStackingLimit ro",
     "List`1 StorableResourceGroups ro",
+    "Boolean IsEnemyLootable ro",
     "List`1 ResourceGroups ro",
+    "HashSet`1 AllUsableResources ro",
     "ZonePriority ZonePriority ro",
     "Single RefillPercentageThreshold ro"
    ]
@@ -203,6 +207,7 @@
     "String get_IconPath()",
     "ZonePriority get_ZonePriority()",
     "String get_IconColorOverlay()",
+    "Void InjectNewlyGeneratedGroups()",
     "String GetID()"
    ],
    "properties": [
@@ -276,6 +281,7 @@
     "Void WaterLevelChanged()",
     "Void PasteStorageSettings(IStorage original)",
     "Boolean ContainsPile(ResourcePileInstance pile)",
+    "Region GetRegion()",
     "Boolean ReserveStorage(ResourceInstance resource, CreatureBase agent, SimpleResourceCount& storedAmount, Vec3Int& position)",
     "Void ReleaseReservations(CreatureBase agent)",
     "List`1 GetStoredPiles()",
@@ -294,8 +300,7 @@
     "Boolean CanStore(ResourceInstance resource, CreatureBase creatureBase)",
     "Void Carve(Vec3Int gridPosition)",
     "Void AllowResource(Resource resource, Boolean allowed)",
-    "Boolean IsExpandValid(Vec3Int[,] newStockpileGridSpaces)",
-    "Void RefreshGridSpaces(Vec3Int[,] newStockpileGridSpaces)"
+    "Boolean IsExpandValid(Vec3Int[,] newStockpileGridSpaces)"
    ],
    "properties": [
     "Boolean BlueprintExists ro",
@@ -524,7 +529,9 @@
   {
    "type": "NSMedieval.Goap.Goals.StockpileUrgentHaulingGoal",
    "base": "StockpileHaulingGoal",
-   "methods": [],
+   "methods": [
+    "Boolean CanStart(Boolean isForced)"
+   ],
    "properties": []
   },
   {
@@ -817,6 +824,9 @@
     "OcclusionCullingMode get_OcclusionCullingMode()",
     "Void set_OcclusionCullingMode(OcclusionCullingMode value)",
     "ForbiddenAreaInfo get_ForbiddenAreaInfo()",
+    "BuildingType get_UpgradeToFlag()",
+    "List`1 get_ReplacedByBlueprints()",
+    "Boolean get_CanBeReplaced()",
     "String get_BeamComponentID()",
     "String get_BedComponentID()",
     "String get_CaravanPostComponentID()",
@@ -860,14 +870,14 @@
     "Single get_CoverIgnore()",
     "Boolean get_HasDestructionAnimation()",
     "Int32 get_BuildTime()",
-    "Single get_InstallationMultiplier()",
-    "Int32 get_MinBuildSkillRequired()",
-    "Single get_AttackTraversePenalty()",
-    "Vec3Int get_Size()"
+    "Single get_InstallationMultiplier()"
    ],
    "properties": [
     "OcclusionCullingMode OcclusionCullingMode rw",
     "ForbiddenAreaInfo ForbiddenAreaInfo ro",
+    "BuildingType UpgradeToFlag ro",
+    "List`1 ReplacedByBlueprints ro",
+    "Boolean CanBeReplaced ro",
     "String BeamComponentID ro",
     "String BedComponentID ro",
     "String CaravanPostComponentID ro",
@@ -892,10 +902,7 @@
     "String TableComponentID ro",
     "String TradingPostComponentID ro",
     "String GallowsComponentID ro",
-    "String TrapComponentID ro",
-    "String WindowComponentID ro",
-    "String VoxelComponentID ro",
-    "String BuildAnimationTrigger ro"
+    "String TrapComponentID ro"
    ]
   },
   {
@@ -916,12 +923,14 @@
     "BuildingType get_ComponentType()",
     "List`1 get_WorkerEffectors()",
     "TransformSettings get_SittingPosition()",
+    "Boolean get_HumanoidRotationDisabled()",
     "String GetID()"
    ],
    "properties": [
     "BuildingType ComponentType ro",
     "List`1 WorkerEffectors ro",
-    "TransformSettings SittingPosition ro"
+    "TransformSettings SittingPosition ro",
+    "Boolean HumanoidRotationDisabled ro"
    ]
   },
   {
@@ -1123,6 +1132,12 @@
    "type": "NSMedieval.BuildingComponents.BuildingPlacementManager",
    "base": "MonoSingleton`1",
    "methods": [
+    "Int32 get_MaximumGridSize()",
+    "Void add_SelectionDragEvent(Action`3 value)",
+    "Void remove_SelectionDragEvent(Action`3 value)",
+    "Void add_BuildingPlacementHoverPositionChangedEvent(Action`1 value)",
+    "Void remove_BuildingPlacementHoverPositionChangedEvent(Action`1 value)",
+    "Boolean get_IsPlanModeOn()",
     "Void add_SelectionCanceledEvent(Action value)",
     "Void remove_SelectionCanceledEvent(Action value)",
     "Void add_EmptyClickEvent(Action value)",
@@ -1131,6 +1146,8 @@
     "Void remove_CraftableBuildingsToggledEvent(Action value)",
     "Void add_StabilityBuildingRemovedEvent(Action value)",
     "Void remove_StabilityBuildingRemovedEvent(Action value)",
+    "Void add_PlanModeChangedEvent(Action value)",
+    "Void remove_PlanModeChangedEvent(Action value)",
     "Dictionary`2 get_ShadowCastingModes()",
     "Boolean get_ConstructWithoutResource()",
     "Void set_ConstructWithoutResource(Boolean value)",
@@ -1151,28 +1168,24 @@
     "Boolean get_UserForceMerlonRotation()",
     "Void SetupCamera()",
     "RelocateBuilding get_MoveBuilding()",
+    "Vec3Int GetPreviewHoverPosition()",
     "Void CachePileToInstall(MovableBuildingPileInstance pileToInstall)",
     "Void ClearPileToInstall()",
+    "Void SetPlanMode(Boolean value)",
+    "Void OnTogglePlanModeKeyPressed()",
     "Void Setup(Vector3 scale, Vector3 position)",
     "Void EmptyClick()",
     "Void MouseEventDown(Int32 button, Vector3 position)",
     "Void OnRightMouseUp()",
     "Void SetMoveOrInstallPlacedSuccess(Boolean moveOrInstallPlacedSuccess)",
+    "Void PlaceUpgradeBuilding(BaseBuildingInstance originalBuilding, BaseBuildingBlueprint replacementBuildingBlueprint, ConstructionPhase constructionPhase)",
     "Void OnLeftMouseUp()",
     "Void InitializeBuilding(String id, RelocateBuilding moveBuilding)",
-    "Void CancelSelection(Boolean resetCancelPlacement)",
-    "Void OnLeftMouseDrag()",
-    "BaseBuildingViewComponent SpawnBaseBuildingViewComponent(BaseBuildingBlueprint blueprint, Vec3Int gridPosition, Int32 angleY)",
-    "Boolean BeamExists(Vec3Int gridPosition, Boolean onlyFinished)",
-    "static Int32 CalculateBeamScaleX(Vec3Int startWall, Vec3Int endWall, IBeamView objectToScale)",
-    "static Int32 CalculateBeamScaleZ(Vec3Int startWall, Vec3Int endWall, IBeamView objectToScale)",
-    "BeamComponentInstance SpawnBeamAxisX(BaseBuildingBlueprint beamToSpawn, Object start, Object end)",
-    "BeamComponentInstance SpawnBeamAxisZ(BaseBuildingBlueprint beamToSpawn, Object start, Object end)",
-    "Void SpawnBlueprint(BaseBuildingBlueprint blueprint, Vec3Int gridPos, Int32 angle, RelocateBuilding moveBuilding)",
-    "Void SpawnRoofAutoTesting(BaseBuildingBlueprint blueprint, Vec3Int gridPos, Int32 angle, Vec3Int scale, List`1 positions)",
-    "BaseBuildingInstance SpawnEnemyBuilding(String blueprintId, Vec3Int gridPos, Int32 yAngle)"
+    "Void CancelSelection(Boolean resetCancelPlacement)"
    ],
    "properties": [
+    "Int32 MaximumGridSize ro",
+    "Boolean IsPlanModeOn rw",
     "Dictionary`2 ShadowCastingModes ro",
     "Boolean ConstructWithoutResource rw",
     "Boolean HasSelectedItem ro",
@@ -1186,7 +1199,7 @@
    ]
   },
   {
-   "type": "NSMedieval.BuildingComponents.BuildingPlacementManager+<ShowRoofPlacementError>d__196",
+   "type": "NSMedieval.BuildingComponents.BuildingPlacementManager+<ShowRoofPlacementError>d__215",
    "base": "Object",
    "methods": [],
    "properties": []
@@ -1206,12 +1219,14 @@
     "Void remove_StabilityCarrierDestroyedEvent(Action`2 value)",
     "Dictionary`2 get_UniqueIdBuildingDictionary()",
     "BaseBuildingInstance get_LastPlacedBuilding()",
+    "HashSet`1 get_ForbiddenBlueprints()",
     "HashSet`1 get_PlayerTriggeredEventHolders()",
     "BaseBuildingInstance get_BuildingToCopy()",
     "Dictionary`2 get_TypePositionInstanceDictionary()",
     "Dictionary`2 get_TypeInstanceView()",
     "Dictionary`2 get_PositionInstanceListDictionary()",
     "T GetComponentInstance(BaseBuildingInstance baseBuildingInstance)",
+    "static Boolean BuildableMaterialExists(String buildingID)",
     "Int32 GetBuildingsCount(String id)",
     "Void SetBuildingToCopy(BaseBuildingInstance buildingToCopy)",
     "Void GetBasicBuildingsNonAlloc(Vec3Int position, IList`1 list)",
@@ -1231,6 +1246,7 @@
     "BaseBuildingInstance GetForbiddenAreaOwner(Vec3Int gridPos)",
     "BaseBuildingInstance FindWouldReplaceBuilding(BaseBuildingInstance newBuilding)",
     "Void TryReplaceBuilding(BaseBuildingInstance newBuilding)",
+    "Void TryUpgradeBuilding(BaseBuildingInstance newBuilding)",
     "List`1 GetBuildings(Vec3Int gridPosition)",
     "PooledList`1 GetBuildings(Vec3Int gridPosition, Func`2 condition)",
     "Void GetAllBuildings(Queue`1 output)",
@@ -1241,15 +1257,13 @@
     "IEnumerable`1 IterateBuildingViews()",
     "BaseBuildingInstance GetBuilding(Vec3Int gridPos, Func`2 condition)",
     "BaseBuildingInstance TryGetBasicBuilding(Vec3Int gridPosition, Func`2 condition)",
-    "Boolean CollidesWithProjectile(Vector3 point, BaseBuildingInstance sourceBuilding)",
-    "Boolean BuildingExists(BuildingType checkFor, Vec3Int gridPosition, Func`2 condition)",
-    "Boolean BuildingExists(Vec3Int gridPosition, Func`2 condition)",
-    "Boolean SocketableBlockerExists(Vec3Int gridPosition)"
+    "Boolean CollidesWithProjectile(Vector3 point, BaseBuildingInstance sourceBuilding)"
    ],
    "properties": [
     "Single TotalBuildingWealth rw",
     "Dictionary`2 UniqueIdBuildingDictionary ro",
     "BaseBuildingInstance LastPlacedBuilding rw",
+    "HashSet`1 ForbiddenBlueprints ro",
     "HashSet`1 PlayerTriggeredEventHolders ro",
     "BaseBuildingInstance BuildingToCopy ro",
     "Dictionary`2 TypePositionInstanceDictionary ro",
@@ -1789,8 +1803,8 @@
    "methods": [
     "Int32 get_CanBeStoredCount()",
     "Int32 get_CanBeReStoredCount()",
-    "ConcurrentHashSet`1 get_CanBeStored()",
-    "ConcurrentHashSet`1 get_PilesToReStore()",
+    "PileData get_Data()",
+    "PileData get_UrgentHaulData()",
     "Boolean IsMarkedForHauling(ResourcePileInstance pile)",
     "Boolean IsMarkedForReStoring(ResourcePileInstance pile)",
     "Void TriggerLazyReProcessAll(Boolean quickCheck)",
@@ -1802,8 +1816,8 @@
    "properties": [
     "Int32 CanBeStoredCount ro",
     "Int32 CanBeReStoredCount ro",
-    "ConcurrentHashSet`1 CanBeStored ro",
-    "ConcurrentHashSet`1 PilesToReStore ro"
+    "PileData Data ro",
+    "PileData UrgentHaulData ro"
    ]
   },
   {
@@ -1836,17 +1850,18 @@
     "List`1 get_StartingResources()",
     "List`1 get_CarcassesMarkedForStripping()",
     "ConcurrentBag`1 get_IndicatorsToUpdate()",
-    "Int32 GetPilesCount()",
+    "Int32 GetPilesCount(Resource blueprint)",
     "Boolean ResourcePileWithProtoIdExists(String protoId)",
     "Int32 GetStoredBlueprintAmount(Resource blueprint)",
     "Void UpdatePlacedOnStorageBlueprintDictionary(ResourcePileInstance pile, IStorage storage)",
     "Void UpdatePlacedOnStorageCategoryDictionary(ResourcePileInstance pile, IStorage storage)",
     "Int32 GetStoredCategoryAmount(ResourceCategory category)",
-    "Void CategoryInstanceDictionaryTryGetValue(ResourceCategory category, HashSet`1& resourcePileInstances)",
+    "Int32 RemoveResources(Resource blueprint, Int32 maxCount, Boolean skipNotLootable, IPathfindingAgent reachableByAgent, WalkableModel walkableModelOverride)",
+    "Void CategoryInstanceDictionaryTryGetValue(ResourceCategory category, PooledHashSet`1& resourcePileInstances)",
     "Void BlueprintInstancesSafeOperation(Resource blueprint, Action`1 operation)",
     "TResult BlueprintInstancesSafeOperation(Resource blueprint, Func`2 operation)",
     "TResult BlueprintInstancesSafeOperation(Resource blueprint, TState state, Func`3 operation)",
-    "HashSet`1 GetAllPiles(Resource blueprint)",
+    "PooledHashSet`1 GetAllPiles(Resource blueprint)",
     "Int32 GetTotalAmount(Resource blueprint)",
     "Void CategoryInstancesSafeOperation(ResourceCategory resourceCategory, Action`1 operation)",
     "TResult CategoryInstancesSafeOperation(ResourceCategory resourceCategory, TState state, Func`3 operation)",
@@ -1901,10 +1916,13 @@
    "type": "NSMedieval.Manager.ResourcePileTracker",
    "base": "MonoSingleton`1",
    "methods": [
+    "Int32 get_UrgentHaulPileCount()",
+    "Void set_UrgentHaulPileCount(Int32 value)",
     "ConcurrentHashSet`1 get_AllAllowed()",
     "ConcurrentHashSet`1 get_CarcassPiles()",
     "IReadOnlyDictionary`2 get_AllResourceCount()",
     "Single get_LastRecountTime()",
+    "Boolean get_HasUrgentHaulPiles()",
     "ISet`1 GetPilesByResourceId(String resourceId)",
     "IReadOnlyDictionary`2 GetPilesByResourceId()",
     "ResourcePileCount GetCount(Resource blueprint)",
@@ -1924,10 +1942,12 @@
     "Void OnPileForbidStateChange(IForbidable forbidable)"
    ],
    "properties": [
+    "Int32 UrgentHaulPileCount rw",
     "ConcurrentHashSet`1 AllAllowed ro",
     "ConcurrentHashSet`1 CarcassPiles ro",
     "IReadOnlyDictionary`2 AllResourceCount ro",
-    "Single LastRecountTime ro"
+    "Single LastRecountTime ro",
+    "Boolean HasUrgentHaulPiles ro"
    ]
   },
   {
@@ -2180,7 +2200,9 @@
    "base": "UIView",
    "methods": [
     "LayoutGroupView get_SubcategoryPanel()",
-    "Void SetupPanel(String buildingId, Boolean hasVariants)"
+    "Void Show()",
+    "Void Hide()",
+    "Void SetupPanel(String buildingId, Boolean hasVariants, BuildingCategoryUI buildingCategoryUI)"
    ],
    "properties": [
     "LayoutGroupView SubcategoryPanel ro"
@@ -2200,6 +2222,7 @@
    "type": "NSMedieval.UI.ConstructionPanelManager",
    "base": "PanelBase",
    "methods": [
+    "static Void OnDomainReload()",
     "BuildingCategoryUI get_CurrentCategory()",
     "Void add_NotificationUpdate(Action`2 value)",
     "Void remove_NotificationUpdate(Action`2 value)",
@@ -2246,10 +2269,10 @@
   },
   {
    "type": "NSMedieval.UI.SelectionExtraStockpile",
-   "base": "SelectionExtraWindowView",
+   "base": "ResourceFilterBaseView",
    "methods": [
-    "Void UpdatePanel(InfoPanelStockpile infoPanelStockpile)",
     "Void Hide()",
+    "Void UpdatePanel(InfoPanelStockpile infoPanelStockpile)",
     "Void Initialize()"
    ],
    "properties": []

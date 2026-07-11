@@ -1,16 +1,22 @@
-time: 18:22:46
-census: autonomy=True pop=5 stockpiles=4 cookfire=1 beds=4 house=done [placed sp=0 cook=0 bed=0]
-action: need=BED autonomy=True pop=5 stockpiles=4 cookfire=1 beds=4 house=done [placed sp=0 cook=0 bed=0] -> ok: building blueprint 'hay_sleeping_spot' committed at (112,6,88) — NO cursor; settlers will construct it
-house:  house: RE-ADOPTED persisted site (110,89) lvl 6: 17 pieces verified in-world, roofs 8/8
-unforbid: allowed 0 (forbidden=0 total=66)
-wood:   designated 0 trees (scanned 9, session 0)
-food:   hunt+0 forage+0 (session hunt=6 forage=31)
+time: 11:07:02
+census: autonomy=True pop=0 stockpiles=-1 cookfire=-1 beds=-1 house=done [placed sp=2 cook=1 bed=0]
+action: no settlers
+house:  house: RE-ADOPTED persisted site (160,178) lvl 5: 18 pieces verified in-world, roofs 7/8
+unforbid: allowed 0 (forbidden=0 total=48)
+wood:   designated 0 trees (scanned 11, session 4)
+food:   hunt+0 forage+0 (session hunt=16 forage=40)
 cellar: cellar: no minable hill face near home (flat terrain) — needs stairs support (v2)
-research: research: no NEEDS match among 0 unlockable (see research_ids.txt)
-blueprints: (no blueprints pending)
+research: research: activated 'agriculture_lvl1' via game's legal path (resources enforced+allocated), rank 5, 1 unlockable
+blueprints: 1/1 blueprint(s) BLOCKED — 'fletchers_table' blocked: UNREACHABLE NO-RESOURCES NO-SKILLED-WORKER; 
 production: prod: 1 order(s) already queued at camp_fire
 farm:   (idle)
-jobs:   jobs: routed 1 settler(s) by skill+passion — Wlfled Elford:Tailoring(lvl20) 
-sched:  schedule: applied medieval-9to5 to 1 settler(s)
-home:   home RESTORED at (114,6,87) from persisted state, radius 22
-alerts: The whole settlement urgently needs (highest priority): | - FOOD IS SCARCE (stored nutrition 0 for 5 settlers) — hunt, forage, or farm and cook meals before anyone starves. | - Not enough beds (4/5) — build beds inside a roofed house so settlers rest and stay dry.
+jobs:   jobs: routed 4 settler(s) by skill+passion — Beorn Tilly:AnimalHandling(lvl23) Carl Maynet:Mining(lvl16) Wenthlen Mallory:Art(lvl24) Gillian Fossard:Mining(lvl16) 
+equip:  equip: 1 hunter(s) need a ranged weapon but NONE in stockpile (craft one)
+sched:  schedule: applied medieval-9to5 to 4 settler(s)
+budget: 8/hr cap, suppressed=703
+home:   home RESTORED at (161,5,181) from persisted state, radius 22
+worldmap: worldmap: 206x206 x 16 levels, 678976 nodes | surface levels 3..7 | open 96% water 1% forest 2% built 67 rock 0% | tower-cols 10 cellar-capable 42336
+siteplan: (idle)
+events: 1 running: '(untitled)' opts=0 info-only
+zoner:  zoner v3: 4 zones roled (food=50 waste=26 ids) | nearest d=5 [redcurrant=Y dungbrick=n] | dump d=217 [redcurrant=n dungbrick=Y]
+alerts: The whole settlement urgently needs (highest priority): | - FOOD IS SCARCE (stored nutrition 0 for 0 settlers) — hunt, forage, or farm and cook meals before anyone starves. | - 1 hunter(s) have NO ranged weapon — equip a bow/sling from the stockpile, or craft one at a fletcher's table, so they can actually hunt.

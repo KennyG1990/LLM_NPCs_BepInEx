@@ -28,6 +28,7 @@ healing_kit_simple
 healing_kit
 healing_kit_advanced
 burn_body
+burn_animal
 winter_clothes
 summer_clothes
 cap
@@ -85,6 +86,9 @@ grand_book
 dismantle_wood
 dismantle_metal
 dismantle_cloth
+repair_wood
+repair_metal
+repair_cloth
 mechanical_parts
 honey
 ice_block

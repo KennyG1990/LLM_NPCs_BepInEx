@@ -1,0 +1,9 @@
+home.x=141
+home.y=6
+home.z=137
+house.ox=137
+house.oz=139
+house.ay=6
+house.roofs=8
+house.complete=1
+farm.placed=1

@@ -29,7 +29,8 @@ namespace GoingMedieval.LLM_NPCs
         {
             ["npc_decisions"] = "player2",
             ["player_chat"] = "player2",
-            ["npc_to_npc"] = "player2"
+            ["npc_to_npc"] = "player2",
+            ["adviser"] = "player2"
         };
 
         public LLMClient(
@@ -101,8 +102,9 @@ namespace GoingMedieval.LLM_NPCs
         public static string OpenRouterModel = "openai/gpt-oss-120b";
         // PER-TASK MODEL ROUTING (Ken): applies on the OpenRouter provider —
         // Player2's daemon owns its own endpoint model, so tasks can't split
-        // there. Keys: npc_decisions | player_chat | npc_to_npc | planner |
-        // chronicle. Empty/missing -> the panel-selected OpenRouterModel.
+        // there. LIVE tasks: npc_decisions | player_chat | npc_to_npc | adviser.
+        // RESERVED (no LLM wired yet): planner | chronicle. Empty/missing/"player2"
+        // -> the panel-selected OpenRouterModel.
         public static readonly Dictionary<string, string> TaskModels = new Dictionary<string, string>();
         public static string ModelForTask(string task)
         {

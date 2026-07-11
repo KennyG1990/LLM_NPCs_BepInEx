@@ -447,7 +447,8 @@ Use contradiction only if you believe the player contradicted an earlier claim."
                     FlowType = PromptFlowTypes.PlayerToNpc,
                     SenderName = "Player",
                     TargetName = _activeNPC?.Name
-                });
+                },
+                task: "player_chat");   // player-facing — use the player_chat model, not npc_to_npc
             return ParseDialogueResponse(response);
         }
 

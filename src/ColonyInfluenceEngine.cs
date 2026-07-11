@@ -201,7 +201,7 @@ Provide a short, immersive, 1-2 sentence response summarizing the state and urgi
                     new Message { Role = "user", Content = prompt }
                 };
 
-                return await client.GetRawResponseAsync(messages, new LLMTraceMetadata { FlowType = PromptFlowTypes.NpcDecisions });
+                return await client.GetRawResponseAsync(messages, new LLMTraceMetadata { FlowType = PromptFlowTypes.ColonyAdvisor }, task: "adviser");
             }
             catch (Exception ex)
             {

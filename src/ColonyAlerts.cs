@@ -68,6 +68,8 @@ namespace GoingMedieval.LLM_NPCs
                     a.Add("No cooking station — build a campfire so raw food becomes edible meals.");
                 if (beds >= 0 && beds < pop)
                     a.Add($"Not enough beds ({beds}/{pop}) — build beds inside a roofed house so settlers rest and stay dry.");
+                if (EquipManager.LastHuntersMissingWeapon > 0)
+                    a.Add($"{EquipManager.LastHuntersMissingWeapon} hunter(s) have NO ranged weapon — equip a bow/sling from the stockpile, or craft one at a fletcher's table, so they can actually hunt.");
 
                 Current = a.Count > 0
                     ? "The whole settlement urgently needs (highest priority):\n- " + string.Join("\n- ", a)

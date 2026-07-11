@@ -34,6 +34,7 @@ namespace GoingMedieval.LLM_NPCs
         public ConfigEntry<string> ModelNpcDecisions { get; private set; }
         public ConfigEntry<string> ModelPlayerChat { get; private set; }
         public ConfigEntry<string> ModelNpcToNpcChat { get; private set; }
+        public ConfigEntry<string> ModelAdviser { get; private set; }
         public ConfigEntry<int> NpcToNpcIntervalMinutes { get; private set; }
         public ConfigEntry<int> PlannerIntervalMinutes { get; private set; }
         public ConfigEntry<float> Temperature { get; private set; }
@@ -50,6 +51,10 @@ namespace GoingMedieval.LLM_NPCs
         public ConfigEntry<string> OpenRouterDataCollectionMode { get; private set; }
         public ConfigEntry<string> OpenRouterFallbackModels { get; private set; }
         public ConfigEntry<float> OpenRouterPolicyErrorLogCooldownSeconds { get; private set; }
+
+        // Harmony instance kept as a field so OnDestroy can UnpatchSelf — required
+        // for clean ScriptEngine HOT-RELOAD (else reloads stack duplicate patches).
+        private Harmony _harmony;
 
         // Core Systems
         internal LLMClient LLMClient { get; private set; }
@@ -73,9 +78,12 @@ namespace GoingMedieval.LLM_NPCs
         private void OnDestroy()
         {
             Log.LogInfo("[Plugin] Shutting down...");
-            
+
             try
             {
+                // Un-patch Harmony so a ScriptEngine HOT-RELOAD doesn't stack a second
+                // set of patches on top of the first (double-execution / crashes).
+                try { _harmony?.UnpatchSelf(); LogToFile("[Plugin] Harmony unpatched (hot-reload safe)"); } catch { }
                 if (MenuIntegration != null)
                 {
                     Destroy(MenuIntegration.gameObject);
@@ -216,8 +224,8 @@ namespace GoingMedieval.LLM_NPCs
                 LogToFile("[Plugin:Awake] Systems initialized");
 
                 // Initialize Harmony and apply patches
-                var harmony = new Harmony(PLUGIN_GUID);
-                harmony.PatchAll();
+                _harmony = new Harmony(PLUGIN_GUID);
+                _harmony.PatchAll();
                 Log.LogInfo("[Plugin:Awake] Harmony patches applied successfully.");
                 LogToFile("[Plugin:Awake] Harmony patches applied successfully.");
                 
@@ -296,13 +304,14 @@ namespace GoingMedieval.LLM_NPCs
             // size). Each entry documents EXACTLY what that model does.
             var modelPlanner = Config.Bind("LLM.TaskModels", "Planner",
                 "",
-                "COLONY PLANNER: reads the map grid + colony state and writes the immediate + seasonal plan " +
-                "(WHERE/WHAT/WHY/WHEN/HOW). Runs 1-2x per in-game day — use your SMARTEST model; a bad plan " +
-                "costs more than a good model. Empty = panel-selected model.");
+                "COLONY PLANNER (LIVE): the elected leader's voice deciding WHERE to build — reads the full-map + " +
+                "colony state and emits a site PREFERENCE the deterministic SiteScorer solves. Low-frequency, " +
+                "high-stakes — use a SMART model. Empty = panel-selected model.");
             var modelChronicle = Config.Bind("LLM.TaskModels", "Chronicle",
                 "",
-                "CHRONICLES & SUMMARIES: death histories, memory summaries, family stories. Rare, long-form, " +
-                "quality matters but not urgency — a mid-tier model with long context. Empty = panel model.");
+                "[RESERVED — NOT YET WIRED: death histories are deterministic templates today, no LLM. Setting this " +
+                "does nothing until an LLM chronicle writer is built.] CHRONICLES & SUMMARIES (intended): death " +
+                "histories, memory summaries, family stories — long-form, mid-tier w/ long context. Empty = panel model.");
             // PER-TASK INTERVALS (player_chat deliberately has none: real-time).
             NpcToNpcIntervalMinutes = Config.Bind("LLM.Intervals", "NpcToNpcConversationMinutes", 15,
                 "Minutes between ambient NPC-to-NPC conversations (each costs 1 call). Raise to save budget.");
@@ -332,13 +341,22 @@ namespace GoingMedieval.LLM_NPCs
                 "Model for NPC<->NPC autonomous dialogue (bulk, low cost). Recommended: meta-llama/llama-3.2-3b-instruct:free"
             );
 
+            ModelAdviser = Config.Bind(
+                "LLM",
+                "ModelAdviser",
+                LLMClient.RecommendedTaskModels["adviser"],
+                "Model for the colony ADVISER/OVERSEER narrative nudge (deterministic engine picks the recommendation; " +
+                "the LLM writes the immersive 1-2 sentence 'you should act' line). Low-frequency. Recommended: a cheap voice model."
+            );
+
             // PER-TASK MODEL ROUTING → LLMClient (now that all binds exist).
             LLMClient.TaskModels["npc_decisions"] = ModelNpcDecisions.Value;   // AUTONOMOUS DECISIONS: high-frequency next-action picks — cheapest/fastest model
             LLMClient.TaskModels["player_chat"] = ModelPlayerChat.Value;       // PLAYER CONVERSATIONS: real-time, player-facing — best voice (NO interval)
             LLMClient.TaskModels["npc_to_npc"] = ModelNpcToNpcChat.Value;      // NPC-TO-NPC BANTER: ambient social dialogue — mid-tier
-            LLMClient.TaskModels["planner"] = modelPlanner.Value;
-            LLMClient.TaskModels["chronicle"] = modelChronicle.Value;
-            LogToFile($"[Plugin:SetupConfiguration] Provider={LLMClient.Provider} budget={LLMClient.MaxCallsPerHour}/hr keySet={LLMClient.OpenRouterApiKey.Length > 0} taskModels=[dec:{ModelNpcDecisions.Value}|chat:{ModelPlayerChat.Value}|n2n:{ModelNpcToNpcChat.Value}|plan:{modelPlanner.Value}|chron:{modelChronicle.Value}]");
+            LLMClient.TaskModels["adviser"] = ModelAdviser.Value;             // COLONY ADVISER: overseer narrative nudge — low-frequency
+            LLMClient.TaskModels["planner"] = modelPlanner.Value;             // RESERVED — no LLM planner wired yet
+            LLMClient.TaskModels["chronicle"] = modelChronicle.Value;         // RESERVED — death histories are deterministic today
+            LogToFile($"[Plugin:SetupConfiguration] Provider={LLMClient.Provider} budget={LLMClient.MaxCallsPerHour}/hr keySet={LLMClient.OpenRouterApiKey.Length > 0} taskModels=[dec:{ModelNpcDecisions.Value}|chat:{ModelPlayerChat.Value}|n2n:{ModelNpcToNpcChat.Value}|adv:{ModelAdviser.Value}|plan(reserved):{modelPlanner.Value}|chron(reserved):{modelChronicle.Value}]");
 
             Temperature = Config.Bind(
                 "LLM",
@@ -625,7 +643,11 @@ namespace GoingMedieval.LLM_NPCs
                     DecisionInterval,
                     EnableFullAutonomy,
                     EnableMod,
-                    LogDecisions
+                    LogDecisions,
+                    ModelNpcDecisions,
+                    ModelPlayerChat,
+                    ModelNpcToNpcChat,
+                    ModelAdviser
                 );
                 Log.LogInfo("[MenuIntegration] Menu system initialized - Look for MOD CONFIG button in main menu");
                 LogToFile("[Plugin:InitializeSystems] MenuIntegration created");

@@ -139,8 +139,46 @@ function initTabs() {
       } else {
         stopGameStream();
       }
+      if (targetId === "colony-tab") {
+        loadColonyStatus();
+      }
     });
   });
+
+  const cbtn = document.getElementById("colony-refresh-btn");
+  if (cbtn) cbtn.addEventListener("click", loadColonyStatus);
+}
+
+// Colony overview (dashboard gap #A) — the Strategic layer's live state.
+async function loadColonyStatus() {
+  const body = document.getElementById("colony-status-body");
+  if (!body) return;
+  if (!activeSaveId) { body.textContent = "Select a save to view colony status."; return; }
+  try {
+    const res = await fetch(`/api/colony/status?save_id=${encodeURIComponent(activeSaveId)}`);
+    const data = await res.json();
+    const s = data && data.status;
+    if (!s) { body.innerHTML = "<em>No colony status yet — start the mod in-game (the Strategic layer posts each tick).</em>"; return; }
+    const rows = [
+      ["Census", s.census], ["Current action", s.action], ["House", s.house],
+      ["Food", s.food], ["Wood", s.wood], ["Jobs", s.jobs],
+      ["Equipment", s.equip], ["Hunters w/o weapon", s.hunters_no_weapon],
+      ["Research", s.research], ["Production", s.production], ["Farm", s.farm],
+      ["Blueprints", s.blueprints], ["World map", s.worldmap], ["Site plan", s.siteplan],
+      ["Alerts", s.alerts],
+    ];
+    let html = "<table style='width:100%;border-collapse:collapse;font-size:13px'>";
+    for (const [k, v] of rows) {
+      if (v === undefined || v === null || v === "") continue;
+      html += `<tr><td style='padding:4px 8px;color:#888;vertical-align:top;white-space:nowrap'>${esc(k)}</td>` +
+              `<td style='padding:4px 8px'>${esc(String(v))}</td></tr>`;
+    }
+    html += "</table>";
+    if (s.updated_at) html += `<p style='color:#888;font-size:12px'>updated ${new Date(s.updated_at*1000).toLocaleTimeString()}</p>`;
+    body.innerHTML = html;
+  } catch (e) {
+    body.textContent = "Failed to load colony status: " + e;
+  }
 }
 
 // Range slider dynamic display

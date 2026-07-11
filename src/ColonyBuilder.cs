@@ -49,6 +49,7 @@ namespace GoingMedieval.LLM_NPCs
         private static int _stockpilesPlaced = 0;
         private static int _cookPlaced = 0;
         private static int _bedsPlaced = 0;
+        private static int _bedsInsidePlaced = 0;   // move-in beds (#32), session cap
         private static bool _dumpedIds = false;
 
         public static string LastAction = "(idle)";
@@ -135,6 +136,11 @@ namespace GoingMedieval.LLM_NPCs
                 // skill + passion/resentment (once per settler per session).
                 JobRouter.RouteAll(live);
 
+                // JOB IMPLIES GEAR: a hunter with no ranged weapon can't hunt
+                // (a fatal link in the starvation death-chain). Order capable
+                // hunters to equip a spare bow/sling from the stockpile.
+                EquipManager.TryEquipHunters(live);
+
                 // WORK/LIFE BALANCE: healthy schedule (8h sleep, 8h work,
                 // guaranteed leisure) — exhausted-awake-at-20h fix.
                 ScheduleRouter.ApplyAll(live);
@@ -151,10 +157,61 @@ namespace GoingMedieval.LLM_NPCs
                 if (ColonyHome.Established && WorldSense.LastGrid.Length == 0)
                     WorldSense.Rasterize(ColonyHome.X, ColonyHome.Y, ColonyHome.Z);
 
+                // WORLDMAP (full 3D spatial awareness): scan the ENTIRE map once
+                // per session (heavy — a single full GridSpaceData pass; NOT hot
+                // path). Substrate for the site-scorer / build-anywhere planner.
+                if (WorldMap.LastScanTicks == 0)
+                    LLMNPCsPlugin.LogToFile("[ColonyBuilder] " + WorldMap.Scan());
+
                 // Fix the colony HOME waypoint once (settler-cluster centroid). All
                 // placement + tree designation then anchor here so the village stays
-                // compact instead of sprawling across the map.
+                // compact instead of sprawling across the map. MUST run before the
+                // site plan — PlanOnce with no home means NO LEASH (live bug: a
+                // reload ran PlanOnce first, homeX=-1, leader picked a site 84
+                // tiles out and the camp ping-ponged, orphaning a campfire).
                 if (!ColonyHome.Established) ColonyHome.Establish(live);
+
+                // LEADER-VOICE SITE PLAN: the elected leader (LLM) says WHERE the
+                // colony should build; the deterministic SiteScorer finds a real
+                // spot that satisfies it (leashed to home). Fires once per
+                // session, budget-gated — and NOT when this save already has its
+                // house (a re-plan for a built colony is a wasted call and a
+                // phantom site that misleads the camp-mover).
+                if (ColonyHome.Established && !HouseSitePlanner.Done &&
+                    WorldMap.LastScanTicks != 0 && !BuiltState.HouseComplete)
+                    HouseSitePlanner.PlanOnce(live);
+
+                // ── COHERENCE (#32 slice 2, Ken: "they build their house a mile
+                // away from their stockpile... they stop doing anything"): when
+                // the leader picks a build site, the CAMP MOVES THERE FIRST —
+                // stockpile, cookfire, wood and food work all re-anchor at the
+                // site BEFORE construction, so building is local, not a march.
+                // Gated on the PERSISTED house state, not the in-memory flag:
+                // during re-adoption Complete is briefly false and the camp
+                // ping-ponged to a stale ChosenSite (live bug).
+                if (HouseSitePlanner.HasSite && ColonyHome.Established &&
+                    !HouseBuilder.Complete && !BuiltState.HouseComplete)
+                {
+                    var cs = HouseSitePlanner.ChosenSite;
+                    int sdx = ColonyHome.X - cs.X, sdz = ColonyHome.Z - cs.Z;
+                    if (sdx * sdx + sdz * sdz > 144)   // >12 tiles: worth moving camp
+                        ColonyHome.MoveTo(cs.X, cs.Y, cs.Z, "leader chose the build site — camp moves there FIRST (shelter-first)");
+                }
+
+                // ── COHERENCE (#32): MOVE IN. Once the roofed house stands, the
+                // colony LIVES there — re-anchor HOME on the shelter so storage,
+                // cooking, beds, farming and tree work all migrate to the house.
+                // Distance-gated so it fires once and is idempotent across reloads.
+                if (HouseBuilder.Complete && ColonyHome.Established)
+                {
+                    var hc = HouseBuilder.HouseCenter;
+                    if (hc != null)
+                    {
+                        int ddx = ColonyHome.X - hc[0], ddz = ColonyHome.Z - hc[2];
+                        if (ddx * ddx + ddz * ddz > 144)   // >12 tiles away
+                            ColonyHome.MoveTo(hc[0], hc[1], hc[2], "roofed house complete — the colony moves in");
+                    }
+                }
 
                 // ── P0: SURVIVAL UNBLOCK — allow the colony's forbidden ground
                 // food/supplies so the hauling AI can store them and settlers can
@@ -166,6 +223,15 @@ namespace GoingMedieval.LLM_NPCs
                 // One-time: dump the real building ids so the plan can target the
                 // cooking station / walls / roof / door by their true ids.
                 if (!_dumpedIds) { _dumpedIds = true; StockpilePlacer.DumpBuildingIds(); }
+
+                // EVENT INTERACTOR groundwork (#34): one-shot type scan of the
+                // story/event/incident system → validation/event_api.txt.
+                GameApiScanner.ScanEventSystem();
+
+                // EVENT INTERACTOR (#34): read game-injected events, let the
+                // leader LLM answer the choice, apply on this main thread.
+                // Cockhamsted died because nobody was reading these.
+                EventInteractor.Tick();
 
                 // ── P0.5: GATHER WOOD — designate nearby trees for chopping so the
                 // settlers have MATERIALS to construct the blueprints. Without wood
@@ -199,19 +265,25 @@ namespace GoingMedieval.LLM_NPCs
                 // ground means the zones are FULL — a colony that plans ahead adds
                 // storage before goods rot in the rain. Expand up to 4 zones.
                 bool storageFull = ResourceUnforbidder.LastTotal > 80 && stockpiles < 4;
-                if ((stockpiles == 0 || storageFull) && _stockpilesPlaced < MaxStockpiles)
+                // COHERENCE (#32): storage must exist AT HOME — a stockpile 100
+                // tiles away at the abandoned camp doesn't count as a pantry.
+                bool storageAtHome = !ColonyHome.Established ||
+                    StockpilePlacer.AnyStockpileNear(ColonyHome.X, ColonyHome.Z, ColonyHome.WorkRadius);
+                if ((stockpiles == 0 || storageFull || !storageAtHome) && _stockpilesPlaced < MaxStockpiles)
                 {
                     var r = StockpilePlacer.TryPlaceStockpileNear(builder.gameObject, 4);
-                    Record(storageFull ? "STORAGE-EXPAND" : "STORAGE", r, ref _stockpilesPlaced);
+                    Record(!storageAtHome ? "STORAGE-AT-HOME" : storageFull ? "STORAGE-EXPAND" : "STORAGE", r, ref _stockpilesPlaced);
                     return;
                 }
 
                 // Priority 2: a COOKING STATION (camp_fire) so raw food becomes
                 // meals — settlers can't eat cooked meals without one.
-                if (cookfires >= 0 && cookfires < 1 && _cookPlaced < 1)
+                bool cookAtHome = !ColonyHome.Established ||
+                    StockpilePlacer.AnyBuildingNear(CookId, ColonyHome.X, ColonyHome.Z, ColonyHome.WorkRadius);
+                if (((cookfires >= 0 && cookfires < 1) || !cookAtHome) && _cookPlaced < 1)
                 {
                     var r = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, CookId);
-                    Record("COOKFIRE", r, ref _cookPlaced);
+                    Record(!cookAtHome ? "COOKFIRE-AT-HOME" : "COOKFIRE", r, ref _cookPlaced);
                     return;
                 }
 
@@ -238,6 +310,27 @@ namespace GoingMedieval.LLM_NPCs
                     var rf = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, BedId); // fallback
                     Record("BED", rf, ref _bedsPlaced);
                     return;
+                }
+
+                // Priority 3.5 — COHERENCE (#32): MOVE-IN BEDS. The finished house
+                // must actually CONTAIN the beds; sleeping spots at the abandoned
+                // camp don't count. One bed per tick on a free interior cell,
+                // world-truth idempotent (skips cells already holding a bed).
+                if (HouseBuilder.Complete && HouseBuilder.IsPlanned && _bedsInsidePlaced < pop)
+                {
+                    int cap = System.Math.Min(pop, HouseBuilder.InteriorCells.Count);
+                    int inside = 0; int[] freeCell = null;
+                    foreach (var c in HouseBuilder.InteriorCells)
+                    {
+                        if (StockpilePlacer.BuildingExistsAt(c[0], HouseBuilder.Level, c[1], BedId)) inside++;
+                        else if (freeCell == null) freeCell = c;
+                    }
+                    if (inside < cap && freeCell != null)
+                    {
+                        var r = StockpilePlacer.TryPlaceBuildingAt(freeCell[0], HouseBuilder.Level, freeCell[1], BedId);
+                        Record("BED-movein", r, ref _bedsInsidePlaced);
+                        return;
+                    }
                 }
 
                 // Priority 4: build the settlers their own HOUSE (walls+door+roof),
@@ -339,10 +432,36 @@ namespace GoingMedieval.LLM_NPCs
                     $"production: {ProductionPlanner.LastResult}\n" +
                     $"farm:   {FarmPlanner.LastResult}\n" +
                     $"jobs:   {JobRouter.LastResult}\n" +
+                    $"equip:  {EquipManager.LastResult}\n" +
                     $"sched:  {ScheduleRouter.LastResult}\n" +
                     $"budget: {LLMClient.MaxCallsPerHour}/hr cap, suppressed={LLMClient.SuppressedCount}\n" +
                     $"home:   {ColonyHome.LastResult}\n" +
+                    $"worldmap: {WorldMap.LastSummary}\n" +
+                    $"siteplan: {HouseSitePlanner.LastResult}\n" +
+                    $"events: {EventInteractor.LastResult}\n" +
+                    $"zoner:  {StockpileZoner.LastResult}\n" +
                     $"alerts: {ColonyAlerts.Current.Replace("\n", " | ")}\n");
+            }
+            catch { }
+
+            // COLONY OVERVIEW (dashboard gap #A): push the strategic layer's state
+            // to the dashboard so it has a colony-level window, not just settlers.
+            try
+            {
+                var mem = LLMNPCsPlugin.Instance?.MemoryManager;
+                if (mem != null)
+                    mem.HttpPostAsync("/api/colony/status", new System.Collections.Generic.Dictionary<string, object>
+                    {
+                        { "save_id", MemoryManager.GetActiveSaveId() },
+                        { "census", LastCensus }, { "action", LastAction },
+                        { "house", HouseBuilder.LastStep }, { "food", FoodGatherer.LastResult },
+                        { "wood", WoodGatherer.LastResult }, { "jobs", JobRouter.LastResult },
+                        { "equip", EquipManager.LastResult }, { "hunters_no_weapon", EquipManager.LastHuntersMissingWeapon },
+                        { "research", ResearchPlanner.LastResult }, { "production", ProductionPlanner.LastResult },
+                        { "farm", FarmPlanner.LastResult }, { "blueprints", BlueprintDiagnostics.Current },
+                        { "worldmap", WorldMap.LastSummary }, { "siteplan", HouseSitePlanner.LastResult },
+                        { "alerts", ColonyAlerts.Current }
+                    });
             }
             catch { }
         }
@@ -369,6 +488,7 @@ namespace GoingMedieval.LLM_NPCs
             _stockpilesPlaced = 0;
             _cookPlaced = 0;
             _bedsPlaced = 0;
+            _bedsInsidePlaced = 0;
             _backoffUntilUtc = DateTime.MinValue;
             LastAction = "(idle)";
             LastCensus = "";

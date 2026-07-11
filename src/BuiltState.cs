@@ -75,6 +75,7 @@ namespace GoingMedieval.LLM_NPCs
             JobRouter.Reset();
             StockpileZoner.Reset();
             ScheduleRouter.Reset();
+            EventInteractor.Reset();
         }
 
         private static object GetActiveVillage()

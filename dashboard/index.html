@@ -85,10 +85,18 @@
           <button type="button" class="tab-btn" data-tab="incidents-tab">Incidents History</button>
           <button type="button" class="tab-btn" data-tab="game-control-tab">Game Control Bridge</button>
           <button type="button" class="tab-btn" data-tab="world-tab">World Systems</button>
+          <button type="button" class="tab-btn" data-tab="colony-tab">Colony</button>
         </div>
 
         <div class="panel-body tab-content-container">
-          
+
+          <!-- Tab: Colony overview (strategic layer) -->
+          <div id="colony-tab" class="tab-content">
+            <h4>Colony overview <button type="button" id="colony-refresh-btn" class="tab-btn" style="float:right">Refresh</button></h4>
+            <p class="section-desc">The Strategic layer's live state — census, needs, jobs, equipment, the leader's site plan, and colony alerts.</p>
+            <div id="colony-status-body">Select a save to view colony status.</div>
+          </div>
+
           <!-- Tab 1: Memories -->
           <div id="memories-tab" class="tab-content active">
             <h4 id="npc-detail-title">Select a settler to view memories</h4>

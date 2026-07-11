@@ -39,6 +39,7 @@ namespace GoingMedieval.LLM_NPCs
         private static readonly List<int[]> _doorCells = new List<int[]>();
         private static readonly List<int[]> _roofCells = new List<int[]>();
         private static int _wallIdx = 0, _doorIdx = 0, _roofIdx = 0, _floorIdx = 0;
+        private static int _roofRetries = 0;   // consecutive rejections of the CURRENT row
         private static string _reason = "";
 
         public static bool Complete = false;
@@ -59,11 +60,23 @@ namespace GoingMedieval.LLM_NPCs
             _ay = 0;
             _wallCells.Clear(); _doorCells.Clear(); _roofCells.Clear();
             _wallIdx = _doorIdx = _roofIdx = _floorIdx = 0;
+            _roofRetries = 0;
             _reason = "";
             LastStep = "(idle)";
         }
 
-        /// <summary>Deterministically generate the full cell layout for a house
+        // Footprint bounds from the wall list (strips span wall-to-wall).
+        /// <summary>Grid center of the planned/built house (null before planning) —
+        /// the colony's move-in target once the shelter is complete (#32).</summary>
+        public static int[] HouseCenter => _planned && _wallCells.Count > 0
+            ? new[] { (MinX() + MaxX()) / 2, _ay, (MinZ() + MaxZ()) / 2 } : null;
+
+        private static int MinX() { int m = int.MaxValue; foreach (var c in _wallCells) if (c[0] < m) m = c[0]; return m == int.MaxValue ? 0 : m; }
+        private static int MaxX() { int m = int.MinValue; foreach (var c in _wallCells) if (c[0] > m) m = c[0]; return m == int.MinValue ? 0 : m; }
+        private static int MinZ() { int m = int.MaxValue; foreach (var c in _wallCells) if (c[1] < m) m = c[1]; return m == int.MaxValue ? 0 : m; }
+        private static int MaxZ() { int m = int.MinValue; foreach (var c in _wallCells) if (c[1] > m) m = c[1]; return m == int.MinValue ? 0 : m; }
+
+        /// <summary>Deterministically generate the full cell layout for a house</summary>
         /// whose footprint origin is (ox,oz) at level ay, with the exterior door
         /// on the perimeter cell closest to home (hx,hz). Same code path for a
         /// FRESH plan and for RE-ADOPTING a persisted plan after reload, so the
@@ -156,6 +169,19 @@ namespace GoingMedieval.LLM_NPCs
             if (StockpilePlacer.HomeAnchor != null) node = StockpilePlacer.HomeAnchor;
             if (node == null) { LastStep = "house: no home/settler node"; return false; }
             int ay = node[1], nx = node[0], nz = node[2];
+
+            // HOUSEPLANNER v2 (Ken): if the elected leader chose a build site (LLM
+            // preference -> deterministic SiteScorer pad), plan the house THERE
+            // instead of the near-home default — the leader's judgment drives WHERE.
+            // Set before the persisted-plan check so adoption keys off the real site.
+            if (HouseSitePlanner.HasSite)
+            {
+                nx = HouseSitePlanner.ChosenSite.X;
+                nz = HouseSitePlanner.ChosenSite.Z;
+                ay = HouseSitePlanner.ChosenSite.Y;
+                LLMNPCsPlugin.LogToFile($"[HouseBuilder] siting house at the leader's chosen spot ({nx},{ay},{nz})");
+            }
+
             int depth = 2 * N - 1; // two rooms sharing the middle wall row
 
             // FIRST: if this save already has our house (persisted plan), adopt
@@ -229,15 +255,47 @@ namespace GoingMedieval.LLM_NPCs
                 LastStep = $"house {which} door: {StockpilePlacer.TryPlaceBuildingAt(c[0], _ay, c[1], Door)}";
                 return LastStep;
             }
-            if (_roofIdx < _roofCells.Count)
+            // ROOF v3 — STRIPS, not cells (ground truth CanPlaceRoof:745-756:
+            // only strip ENDPOINTS need support; endpoints sit over the perimeter
+            // walls, the middle spans the room like a real roof). One strip per
+            // z-row across the full house width; _roofIdx counts rows.
+            int ox2 = _wallCells.Count > 0 ? MinX() : 0;
+            int depth = _roofCells.Count > 0 || _wallCells.Count > 0 ? (MaxZ() - MinZ() + 1) : 0;
+            if (_roofIdx < depth)
             {
-                var c = _roofCells[_roofIdx++];
-                // Roofs use the game's roof-component path (not normal placement) and
-                // must sit ONE LEVEL ABOVE the floor — CanPlaceRoof rejects any cell
-                // where ground/floor exists (so ay fails; ay+1 is the ceiling).
-                // Progress is PERSISTED so a reload never re-invokes placed roofs.
-                LastStep = $"house roof {_roofIdx}/{_roofCells.Count}: {StockpilePlacer.TryPlaceRoofAt(c[0], _ay + 1, c[1], Roof)}";
-                BuiltState.RoofsPlaced = _roofIdx;
+                int rowZ = MinZ() + _roofIdx;
+                // v4 FIRST: phantom blueprints from the no-autoconstruct era sit on
+                // the roof level and block every strip (diag: BLOCKER@cell=Y,
+                // support=Y). If the row already holds roof instances, KICK the
+                // unqueued ones into construction — that IS the roof for this row.
+                int width = MaxX() - MinX() + 1;
+                string kick = StockpilePlacer.KickRoofRow(MinX(), MaxX(), _ay + 1, rowZ, Roof, out int have);
+                if (have >= width)
+                {
+                    _roofIdx++; _roofRetries = 0; BuiltState.RoofsPlaced = _roofIdx;
+                    LastStep = $"house roof row {_roofIdx}/{depth}: existing blueprints — {kick}";
+                    return LastStep;
+                }
+                if (have > 0)
+                {
+                    // Partial phantom row: kicked what exists; strip can't span the
+                    // blockers. Count it done for the pass and log the gap honestly.
+                    _roofIdx++; _roofRetries = 0; BuiltState.RoofsPlaced = _roofIdx;
+                    LastStep = $"house roof row {_roofIdx}/{depth}: PARTIAL {kick} — gap cells left for a later pass";
+                    LLMNPCsPlugin.LogToFile($"[HouseBuilder] {LastStep}");
+                    return LastStep;
+                }
+                string res = StockpilePlacer.TryPlaceRoofStrip(MinX(), MaxX(), _ay + 1, rowZ, Roof);
+                bool ok = res.StartsWith("ok:");
+                // HONEST counting (the old code counted ATTEMPTS — rejected rows
+                // were persisted as progress and never retried after a reload).
+                if (ok) { _roofIdx++; _roofRetries = 0; BuiltState.RoofsPlaced = _roofIdx; }
+                else if (++_roofRetries >= 4)
+                {
+                    LLMNPCsPlugin.LogToFile($"[HouseBuilder] roof row z={rowZ} gave up after {_roofRetries} rejections — SKIPPED: {res}");
+                    _roofIdx++; _roofRetries = 0;
+                }
+                LastStep = $"house roof row {(ok ? _roofIdx : _roofIdx + 1)}/{depth}{(ok ? "" : $" (try {_roofRetries})")}: {res}";
                 return LastStep;
             }
             Complete = true;

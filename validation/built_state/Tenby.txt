@@ -1,0 +1,6 @@
+home.x=54
+home.y=5
+home.z=150
+house.ox=50
+house.oz=152
+house.ay=5

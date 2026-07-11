@@ -27,6 +27,22 @@ namespace GoingMedieval.LLM_NPCs
             LastResult = "(none)";
         }
 
+        /// <summary>MOVE the colony home — coherence (#32). Once the roofed house
+        /// stands, the colony LIVES there: every placer, designator and radius
+        /// re-anchors on the shelter. Persisted immediately so reloads keep it.
+        /// (Live bug this fixes: settlers slept and ate at the original camp
+        /// ~100 tiles from their finished house — "Will is rebellious, reason:
+        /// Damp" in the rain while the dry roofed house stood empty.)</summary>
+        public static void MoveTo(int x, int y, int z, string reason)
+        {
+            X = x; Y = y; Z = z;
+            Established = true;
+            StockpilePlacer.HomeAnchor = new[] { X, Y, Z };
+            BuiltState.SaveHome(X, Y, Z);
+            LastResult = $"home MOVED to ({X},{Y},{Z}) — {reason}";
+            LLMNPCsPlugin.LogToFile($"[ColonyHome] {LastResult}");
+        }
+
         /// <summary>Fix HOME. Priority: (1) the PERSISTED home for this save —
         /// settlers scatter once the colony runs, so a reload must NOT re-derive
         /// a drifted centroid (that drift made the house planner search a new
