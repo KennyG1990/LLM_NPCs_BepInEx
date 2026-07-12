@@ -76,6 +76,11 @@ namespace GoingMedieval.LLM_NPCs
             StockpileZoner.Reset();
             ScheduleRouter.Reset();
             EventInteractor.Reset();
+            DeathChronicler.Reset();
+            WeaponChain.Reset();
+            PlanManager.Reset();
+            HouseArchitect.Reset();
+            VillageLayout.Reset();
         }
 
         private static object GetActiveVillage()
@@ -125,6 +130,65 @@ namespace GoingMedieval.LLM_NPCs
         {
             _kv.Remove("house.ox"); _kv.Remove("house.oz"); _kv.Remove("house.ay");
             _kv.Remove("house.roofs"); _kv.Remove("house.complete");
+            _kv.Remove("house.ver"); _kv.Remove("house.seed"); _kv.Remove("house.pop");
+            _kv.Remove("house.program");
+            Persist();
+        }
+
+        /// <summary>#31 Packer plan versioning. Version 1 (or absent) = the legacy
+        /// fixed 4x7 two-room layout; version 2 = the corridor-spine generator
+        /// (seed+pop regenerate the identical layout on re-adoption).</summary>
+        public static int HousePlanVersion
+        {
+            get { return TryInt("house.ver", out var v) ? v : 1; }
+            set { _kv["house.ver"] = value.ToString(); Persist(); }
+        }
+
+        public static bool TryGetHousePlanV2(out int seed, out int pop)
+        {
+            seed = pop = 0;
+            return TryInt("house.seed", out seed) && TryInt("house.pop", out pop);
+        }
+
+        public static void SaveHousePlanV2(int ox, int oz, int ay, int seed, int pop)
+        {
+            _kv["house.ox"] = ox.ToString(); _kv["house.oz"] = oz.ToString(); _kv["house.ay"] = ay.ToString();
+            _kv["house.ver"] = "2"; _kv["house.seed"] = seed.ToString(); _kv["house.pop"] = pop.ToString();
+            Persist();
+        }
+
+        /// <summary>#31 slice B: the ARCHITECT's room program for the CURRENT
+        /// building ("name:width,name:width"; empty = deterministic defaults).
+        /// Persisted so reload re-adoption regenerates the identical design.</summary>
+        public static string HouseProgram
+        {
+            get { return _kv.TryGetValue("house.program", out var v) ? v : ""; }
+            set { _kv["house.program"] = value ?? ""; Persist(); }
+        }
+
+        /// <summary>Village building queue (architect strategy): entries
+        /// "label|program" separated by ';'. Index advances as buildings complete.</summary>
+        public static string VillageQueue
+        {
+            get { return _kv.TryGetValue("village.queue", out var v) ? v : ""; }
+            set { _kv["village.queue"] = value ?? ""; Persist(); }
+        }
+        public static int VillageQueueIndex
+        {
+            get { return TryInt("village.qidx", out var n) ? n : 0; }
+            set { _kv["village.qidx"] = value.ToString(); Persist(); }
+        }
+
+        /// <summary>The village CENTER (the plaza) — fixed once per save at the
+        /// leader's sited plot; every building slots around it.</summary>
+        public static bool TryGetVillageCenter(out int x, out int y, out int z)
+        {
+            x = y = z = 0;
+            return TryInt("village.cx", out x) && TryInt("village.cy", out y) && TryInt("village.cz", out z);
+        }
+        public static void SaveVillageCenter(int x, int y, int z)
+        {
+            _kv["village.cx"] = x.ToString(); _kv["village.cy"] = y.ToString(); _kv["village.cz"] = z.ToString();
             Persist();
         }
 

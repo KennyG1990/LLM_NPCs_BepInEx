@@ -97,12 +97,82 @@ namespace GoingMedieval.LLM_NPCs
                 // needs — computed even when autonomy is off (it feeds decision-making).
                 ColonyAlerts.Compute(pop);
 
+                // ── CRISIS REACTOR (#37, Ken: "they all died because of the
+                // warnings... there are all kinds of warnings here"). A warning
+                // the system can see is a warning the system must ACT on.
+                // Starvation inverts the priority hierarchy: caps lift, radius
+                // stretches, every settler drops art/research for food work.
+                bool crisis = pop > 0 && ColonyAlerts.LastNutrition >= 0 &&
+                              ColonyAlerts.LastNutrition < pop * 6;
+                FoodGatherer.Crisis = crisis;
+                if (crisis)
+                {
+                    LastCensus = "⚠CRISIS(food) " + LastCensus;
+                    JobRouter.CrisisRouteAll(live);
+                }
+                else JobRouter.ExitCrisis();
+
+                // #31 HOUSING DIRECTOR: when the colony outgrows the shack, THE
+                // ARCHITECT (LLM) designs the village housing — one common house
+                // or individual houses per villager — and the queue is built one
+                // building at a time. Deterministic longhouse only as fallback.
+                HouseBuilder.TargetPop = pop;
+                // director keys on NEED, not a magic pop number (the pop>=5 gate
+                // blocked the architect for 4-settler Dolgellau) — any colony
+                // with a completed first shelter graduates to architect housing.
+                if (pop >= 3 && BuiltState.HouseComplete)
+                {
+                    if (BuiltState.HousePlanVersion == 1)
+                    {
+                        if (HouseArchitect.Tick(live) && HouseArchitect.TryCurrentBuilding(out var lbl, out var prog))
+                        {
+                            HouseBuilder.GraduateToLonghouse();
+                            BuiltState.HouseProgram = prog;
+                            LLMNPCsPlugin.LogToFile($"[ColonyBuilder] ARCHITECT building 1 '{lbl}': {prog}");
+                        }
+                        else if (HouseArchitect.FailedAttempts >= 2)
+                        {
+                            HouseBuilder.GraduateToLonghouse();
+                            LLMNPCsPlugin.LogToFile("[ColonyBuilder] architect unavailable twice — deterministic longhouse fallback");
+                        }
+                    }
+                    else if (HouseBuilder.Complete && HouseArchitect.TryCurrentBuilding(out var curLbl, out var curProg)
+                             && BuiltState.HouseProgram == curProg)
+                    {
+                        if (HouseArchitect.AdvanceQueue() && HouseArchitect.TryCurrentBuilding(out var nxtLbl, out var nxtProg))
+                        {
+                            HouseBuilder.GraduateToLonghouse();
+                            BuiltState.HouseProgram = nxtProg;
+                            LLMNPCsPlugin.LogToFile($"[ColonyBuilder] ARCHITECT next building '{nxtLbl}': {nxtProg}");
+                        }
+                    }
+                    else if (BuiltState.HousePlanVersion == 2 && HouseBuilder.Complete
+                             && string.IsNullOrEmpty(BuiltState.VillageQueue))
+                    {
+                        // A v2 building finished but no architect design exists
+                        // (the deterministic longhouse got there first): consult
+                        // now — the architect designs the village's NEXT phase.
+                        if (HouseArchitect.Tick(live) && HouseArchitect.TryCurrentBuilding(out var l2, out var p2))
+                        {
+                            HouseBuilder.GraduateToLonghouse();
+                            BuiltState.HouseProgram = p2;
+                            LLMNPCsPlugin.LogToFile($"[ColonyBuilder] ARCHITECT village phase 2, building 1 '{l2}': {p2}");
+                        }
+                    }
+                }
+
                 // Read the SAME per-blueprint blockers the player's STATS panel
                 // shows (unreachable / no resources / no skilled worker) so the
                 // colony KNOWS why something isn't getting built.
                 BlueprintDiagnostics.Scan();
                 if (BlueprintDiagnostics.Blocked > 0)
                     LLMNPCsPlugin.LogToFile($"[ColonyBuilder] blueprints: {BlueprintDiagnostics.Current}");
+
+                // BUILD PRESSURE: a buildable blueprint must actually WIN the
+                // job race — pending ≥3 ticks → best-Construction settler gets
+                // Construct prio 1 (released when the queue clears). Fletcher
+                // sat unbuilt for hours with Construct at 3/4/4 (eyes-on 18:50).
+                JobRouter.EnsureBuildPressure(live, BlueprintDiagnostics.Pending);
 
                 // ── REACT to blueprint blockers (read->decide->act loop) ──
                 // Resources missing for a pending blueprint: get MORE WOOD moving
@@ -120,7 +190,12 @@ namespace GoingMedieval.LLM_NPCs
                     var live0 = settlers.FirstOrDefault(s => s != null && s.gameObject != null);
                     if (live0 != null)
                     {
+                        // ELASTIC RADIUS (needs beat leash): local trees deplete
+                        // on a 2%-forest map (22:38: 7 scanned, 0 designated,
+                        // blueprints stuck NO-RESOURCES). Prefer near; when the
+                        // near pass designates nothing, sweep wide.
                         int t = WoodGatherer.DesignateTreesNear(live0.gameObject, 16, 10);
+                        if (t == 0) t = WoodGatherer.DesignateTreesNear(live0.gameObject, 40, 10);
                         if (t > 0) LLMNPCsPlugin.LogToFile($"[ColonyBuilder] REACT no-resources -> designated {t} more trees");
                     }
                 }
@@ -140,6 +215,21 @@ namespace GoingMedieval.LLM_NPCs
                 // (a fatal link in the starvation death-chain). Order capable
                 // hunters to equip a spare bow/sling from the stockpile.
                 EquipManager.TryEquipHunters(live);
+
+                // WEAPON PIPELINE OWNER: when hunters lack a ranged weapon and
+                // none exists to equip, walk the craft chain (station → order →
+                // ProductionState → skill gate) and react — the silent
+                // NO-SKILLED-WORKER stall contributed to both colony wipes.
+                WeaponChain.Tick(live);
+
+                // PROGRAMMATIC SAVE: consume validation/save_request.txt →
+                // game's own AutosaveCurrentVillage (main thread, UI-free).
+                SaveGuard.Tick();
+
+                // #17 THE PLANNER: LLM strategist writes a bounded plan against
+                // the verb menu; deterministic executor runs one step per beat.
+                // Runs AFTER the survival floor — a plan never overrides crisis.
+                PlanManager.Tick(live);
 
                 // WORK/LIFE BALANCE: healthy schedule (8h sleep, 8h work,
                 // guaranteed leisure) — exhausted-awake-at-20h fix.
@@ -233,6 +323,11 @@ namespace GoingMedieval.LLM_NPCs
                 // Cockhamsted died because nobody was reading these.
                 EventInteractor.Tick();
 
+                // DEATH HISTORY (#27, doc 08): roster diff — when a settler
+                // dies, write their chronicle and give every survivor the
+                // memory of the loss.
+                DeathChronicler.Tick(live);
+
                 // ── P0.5: GATHER WOOD — designate nearby trees for chopping so the
                 // settlers have MATERIALS to construct the blueprints. Without wood
                 // they stand idle next to unbuilt walls. Bounded (won't clear-cut).
@@ -244,7 +339,9 @@ namespace GoingMedieval.LLM_NPCs
                 // starving. Bounded to home radius + per-session caps.
                 if (ColonyHome.Established)
                 {
-                    var food = FoodGatherer.ProduceFoodNear(ColonyHome.X, ColonyHome.Y, ColonyHome.Z, ColonyHome.WorkRadius);
+                    // Crisis: venture out — triple the food-search radius (#37).
+                    var food = FoodGatherer.ProduceFoodNear(ColonyHome.X, ColonyHome.Y, ColonyHome.Z,
+                        FoodGatherer.Crisis ? ColonyHome.WorkRadius * 3 : ColonyHome.WorkRadius);
                     if (food.Contains("+") && !food.Contains("+0 forage+0"))
                         LLMNPCsPlugin.LogToFile($"[ColonyBuilder] food: {food}");
                 }
@@ -293,23 +390,27 @@ namespace GoingMedieval.LLM_NPCs
                 if (beds >= 0 && beds < pop && _bedsPlaced < pop)
                 {
                     if (!HouseBuilder.IsPlanned) HouseBuilder.Plan(builder.gameObject);
-                    // Skip interior cells that ALREADY hold a bed in the loaded
-                    // save (idempotent against world truth, not the session index).
-                    while (HouseBuilder.IsPlanned && _bedsPlaced < HouseBuilder.InteriorCells.Count &&
+                    // Beds go in DORM/BEDROOM cells (v2 plans purpose-tag them;
+                    // legacy plans fall back to all interior cells). Skip cells
+                    // that ALREADY hold a bed in the loaded save (world truth).
+                    var bedCells = HouseBuilder.BedCells;
+                    while (HouseBuilder.IsPlanned && _bedsPlaced < bedCells.Count &&
                            StockpilePlacer.BuildingExistsAt(
-                               HouseBuilder.InteriorCells[_bedsPlaced][0], HouseBuilder.Level,
-                               HouseBuilder.InteriorCells[_bedsPlaced][1], BedId))
+                               bedCells[_bedsPlaced][0], HouseBuilder.Level,
+                               bedCells[_bedsPlaced][1], BedId))
                         _bedsPlaced++;
-                    if (HouseBuilder.IsPlanned && _bedsPlaced < HouseBuilder.InteriorCells.Count)
+                    if (HouseBuilder.IsPlanned && _bedsPlaced < bedCells.Count)
                     {
-                        var c = HouseBuilder.InteriorCells[_bedsPlaced];
+                        var c = bedCells[_bedsPlaced];
                         var r = StockpilePlacer.TryPlaceBuildingAt(c[0], HouseBuilder.Level, c[1], BedId);
                         Record("BED-inside", r, ref _bedsPlaced);
                         return;
                     }
-                    var rf = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, BedId); // fallback
-                    Record("BED", rf, ref _bedsPlaced);
-                    return;
+                    // NO outdoor fallback (Ken, eyes-on 2026-07-12: a bed alone in
+                    // a field). A full interior is a HOUSE-EXTENSION need (#31
+                    // Packer), not a license for lawn furniture. Report honestly.
+                    LastAction = $"beds {beds}/{pop}: interior FULL — house extension needed (#31); no outdoor bed";
+                    LLMNPCsPlugin.LogToFile("[ColonyBuilder] " + LastAction);
                 }
 
                 // Priority 3.5 — COHERENCE (#32): MOVE-IN BEDS. The finished house
@@ -423,6 +524,7 @@ namespace GoingMedieval.LLM_NPCs
                     $"census: {LastCensus}\n" +
                     $"action: {LastAction}\n" +
                     $"house:  {HouseBuilder.LastStep}\n" +
+                    $"architect: {HouseArchitect.LastResult}\n" +
                     $"unforbid: {ResourceUnforbidder.LastResult}\n" +
                     $"wood:   {WoodGatherer.LastResult}\n" +
                     $"food:   {FoodGatherer.LastResult}\n" +
@@ -431,15 +533,19 @@ namespace GoingMedieval.LLM_NPCs
                     $"blueprints: {BlueprintDiagnostics.Current}\n" +
                     $"production: {ProductionPlanner.LastResult}\n" +
                     $"farm:   {FarmPlanner.LastResult}\n" +
-                    $"jobs:   {JobRouter.LastResult}\n" +
+                    $"jobs:   {JobRouter.LastResult} | build-pressure: {JobRouter.PressureResult}\n" +
                     $"equip:  {EquipManager.LastResult}\n" +
+                    $"weapons: {WeaponChain.LastResult}\n" +
                     $"sched:  {ScheduleRouter.LastResult}\n" +
-                    $"budget: {LLMClient.MaxCallsPerHour}/hr cap, suppressed={LLMClient.SuppressedCount}\n" +
+                    $"budget: {LLMClient.MaxCallsPerHour}/hr cap, {LLMClient.LaneReport()}\n" +
                     $"home:   {ColonyHome.LastResult}\n" +
                     $"worldmap: {WorldMap.LastSummary}\n" +
                     $"siteplan: {HouseSitePlanner.LastResult}\n" +
                     $"events: {EventInteractor.LastResult}\n" +
                     $"zoner:  {StockpileZoner.LastResult}\n" +
+                    $"deaths: {DeathChronicler.LastResult}\n" +
+                    $"save:   {SaveGuard.LastResult}\n" +
+                    $"plan:   {PlanManager.LastResult}\n" +
                     $"alerts: {ColonyAlerts.Current.Replace("\n", " | ")}\n");
             }
             catch { }

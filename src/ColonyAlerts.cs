@@ -37,6 +37,9 @@ namespace GoingMedieval.LLM_NPCs
         }
 
         /// <summary>Total nutrition of food currently in stockpiles (-1 if unavailable).</summary>
+        /// <summary>Stored nutrition from the last Compute — the crisis trigger.</summary>
+        public static int LastNutrition = -1;
+
         private static int TotalFoodNutrition()
         {
             try
@@ -59,6 +62,7 @@ namespace GoingMedieval.LLM_NPCs
                 int cook = StockpilePlacer.CountBuildings("camp_fire");
                 int beds = StockpilePlacer.CountBuildings("hay_sleeping_spot");
                 int food = TotalFoodNutrition();
+                LastNutrition = food;   // crisis reactor reads this (Ken: warnings must trigger reactions)
 
                 if (food >= 0 && food < Math.Max(1, pop) * 8)
                     a.Add($"FOOD IS SCARCE (stored nutrition {food} for {pop} settlers) — hunt, forage, or farm and cook meals before anyone starves.");

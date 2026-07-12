@@ -153,6 +153,13 @@ namespace GoingMedieval.LLM_NPCs
 
             PromptTrace.SetEnabled(EnablePromptTracing?.Value ?? true);
 
+            // REAL-TIME (game time may be frozen by the very screens this
+            // dismisses — Dowsby's famine fell in frozen time, 2026-07-12).
+            RecapDismisser.Tick();
+            // Blocking EVENT dialogs also freeze game time — the leader must be
+            // able to answer them from real time (same deadlock class).
+            EventInteractor.RealTimePump();
+
             DialogueManager?.Update();
             MenuIntegration?.Update();
             

@@ -1,0 +1,9 @@
+home.x=90
+home.y=5
+home.z=156
+village.cx=90
+village.cy=5
+village.cz=156
+house.program=hall:6,dorm:5,pantry:4,workshop:3
+village.queue=common house|hall:6,dorm:5,pantry:4,workshop:3
+village.qidx=0

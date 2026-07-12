@@ -24,6 +24,13 @@ namespace GoingMedieval.LLM_NPCs
         private static int _huntSession = 0, _forageSession = 0;
         private const int HuntCap = 16, ForageCap = 40;
 
+        /// <summary>CRISIS (#37, Ken: Llangefni starved AFTER hitting these very
+        /// caps — "hunt+0 forage+0" during a famine with animals all over the
+        /// map). When the colony is starving, the peacetime don't-strip-the-map
+        /// bounds YIELD: caps ignored, callers widen the radius. Survival
+        /// constraints beat all other constraints.</summary>
+        public static bool Crisis = false;
+
         /// <summary>Clear per-session caps. Called by BuiltState on world (re)load.</summary>
         public static void Reset() { _huntSession = 0; _forageSession = 0; LastResult = "(idle)"; }
 
@@ -63,7 +70,7 @@ namespace GoingMedieval.LLM_NPCs
         {
             try
             {
-                if (_huntSession >= HuntCap) return 0;
+                if (!Crisis && _huntSession >= HuntCap) return 0;
                 _animMgr = _animMgr ?? FindTypeByName("AnimalManager");
                 var mgr = _animMgr != null ? Singleton(_animMgr) : null;
                 if (mgr == null) return 0;
@@ -80,7 +87,7 @@ namespace GoingMedieval.LLM_NPCs
                 int marked = 0;
                 foreach (var kv in animals)
                 {
-                    if (_huntSession >= HuntCap || marked >= 6) break;
+                    if ((!Crisis && _huntSession >= HuntCap) || marked >= (Crisis ? 12 : 6)) break;
                     var animal = kv.GetType().GetProperty("Key")?.GetValue(kv, null);
                     var view = kv.GetType().GetProperty("Value")?.GetValue(kv, null);
                     if (animal == null) continue;
@@ -114,7 +121,7 @@ namespace GoingMedieval.LLM_NPCs
         {
             try
             {
-                if (_forageSession >= ForageCap) return 0;
+                if (!Crisis && _forageSession >= ForageCap) return 0;
                 _plantMgr = _plantMgr ?? FindTypeByName("PlantResourceManager");
                 var mgr = _plantMgr != null ? Singleton(_plantMgr) : null;
                 if (mgr == null) return 0;
@@ -125,8 +132,8 @@ namespace GoingMedieval.LLM_NPCs
                 if (getPlant == null) return 0;
 
                 int marked = 0;
-                for (int dx = -radius; dx <= radius && marked < 6 && _forageSession < ForageCap; dx++)
-                    for (int dz = -radius; dz <= radius && marked < 6 && _forageSession < ForageCap; dz++)
+                for (int dx = -radius; dx <= radius && marked < (Crisis ? 14 : 6) && (Crisis || _forageSession < ForageCap); dx++)
+                    for (int dz = -radius; dz <= radius && marked < (Crisis ? 14 : 6) && (Crisis || _forageSession < ForageCap); dz++)
                     {
                         var cell = MakeVec3(hx + dx, hy, hz + dz);
                         if (cell == null) continue;

@@ -641,6 +641,40 @@ namespace GoingMedieval.LLM_NPCs
         }
 
         /// <summary>The settler's current grid node (x,y,z level) or null.</summary>
+        /// <summary>TRUE when the grid cell's map node (and the ground below it)
+        /// is dry land. Buildable ≠ habitable: shallow-water/marsh cells pass
+        /// CanPlace but furniture on them reads "unsuitable environment (In
+        /// Water)" — Dolgellau's longhouse beds sat in the marsh (2026-07-12).</summary>
+        public static bool CellIsDry(int x, int ay, int z)
+        {
+            try
+            {
+                var vmType = FindType("NSMedieval.Village.VillageManager");
+                var village = vmType?.GetProperty("ActiveVillage",
+                    BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
+                var map = village?.GetType().GetProperty("Map")?.GetValue(village, null);
+                var probe = MakeVec3Int(x, ay, z);
+                if (map == null || probe == null) return false;
+                var getNode = map.GetType().GetMethod("GetNode", new[] { probe.GetType() });
+                if (getNode == null) return false;
+                bool Wet(object node)
+                {
+                    if (node == null) return false;
+                    var t = node.GetType();
+                    var w = t.GetField("IsWater", BindingFlags.Public | BindingFlags.Instance)?.GetValue(node);
+                    if (w is bool b && b) return true;
+                    var tag = t.GetProperty("HasWaterTag", BindingFlags.Public | BindingFlags.Instance)?.GetValue(node, null)
+                              ?? t.GetField("HasWaterTag", BindingFlags.Public | BindingFlags.Instance)?.GetValue(node);
+                    return tag is bool tb && tb;
+                }
+                if (Wet(getNode.Invoke(map, new[] { probe }))) return false;
+                var belowProbe = MakeVec3Int(x, ay - 1, z);
+                if (belowProbe != null && Wet(getNode.Invoke(map, new[] { belowProbe }))) return false;
+                return true;
+            }
+            catch { return false; }
+        }
+
         public static int[] SettlerNode(GameObject settlerGo)
         {
             try

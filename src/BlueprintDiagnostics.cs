@@ -20,6 +20,7 @@ namespace GoingMedieval.LLM_NPCs
     {
         public static string Current = "(none)";
         public static int Blocked = 0;
+        public static int Pending = 0;   // total blueprint-phase buildings (read by JobRouter build pressure)
         // Reaction flags for the strategic layer (set each Scan)
         public static bool AnyNoResources = false, AnyNoSkill = false, AnyUnreachable = false;
 
@@ -68,6 +69,7 @@ namespace GoingMedieval.LLM_NPCs
                     if (!skill) { why.Append("NO-SKILLED-WORKER "); AnyNoSkill = true; }
                     sb.Append($"'{id ?? "?"}' blocked: {why.ToString().Trim()}; ");
                 }
+                Pending = blueprints;
                 Current = blueprints == 0
                     ? "(no blueprints pending)"
                     : (Blocked == 0 ? $"{blueprints} blueprint(s), all buildable"

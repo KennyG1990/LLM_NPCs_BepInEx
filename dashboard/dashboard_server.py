@@ -480,6 +480,22 @@ def build_dialogue_prompt_context(conn, save_id, settler_id):
         for item in barter_intents:
             lines.append(f"- {item['intent_type']}: {item['item'] or 'unspecified'}; terms={item['terms'] or 'unspecified'}; status={item['status']}")
 
+    # P5 slice 1 (doc 02): events this settler KNOWS reach their conversation.
+    # Lived/propagated world events come from gm_systems.known_events; without
+    # this section the whole propagation pipeline never touched a prompt.
+    try:
+        import gm_systems as _gs
+        world_events = _gs.known_events(conn, save_id, settler_id, limit=6)
+    except Exception:
+        world_events = []
+    if world_events:
+        lines.append("=== WORLD EVENTS YOU KNOW OF ===")
+        for ev in world_events:
+            state = ev.get("rumor_state") or "rumor"
+            qualifier = "you witnessed/lived this" if state == "knows" else "you heard this as rumor"
+            lines.append(f"- [{ev.get('event_type','event')}] {ev.get('title','')}: {ev.get('description','')[:220]} ({qualifier})")
+        lines.append("Bring these up naturally when relevant — they are part of your lived world.")
+
     if disclosure == "guarded":
         lines.append("Trust gate: be cautious. Do not reveal secrets, private resentment, scarce supplies, or sensitive colony weaknesses unless directly necessary.")
     elif disclosure == "normal":
@@ -496,6 +512,7 @@ def build_dialogue_prompt_context(conn, save_id, settler_id):
         "contradictions": contradictions,
         "barter_intents": barter_intents,
         "trust_events": trust_events,
+        "world_events": world_events,
         "prompt_context": "\n".join(lines),
     }
 

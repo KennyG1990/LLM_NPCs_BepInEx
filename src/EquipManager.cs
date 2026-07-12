@@ -115,6 +115,13 @@ namespace GoingMedieval.LLM_NPCs
         }
 
         // A weapon Equipment (blueprint) whose primary mode is ranged.
+        // AttackType lives one hop deeper than the mode: WeaponMode
+        // .WeaponTypeSettings.AttackType (decompiled WeaponMode:212-266 — the
+        // direct HGet(mode,"AttackType") read null on every real weapon,
+        // which hid 4 crafted ranged weapons on 2026-07-11).
+        private static object ModeAttackType(object mode) =>
+            mode == null ? null : (HGet(HGet(mode, "WeaponTypeSettings"), "AttackType") ?? HGet(mode, "AttackType"));
+
         private static bool IsRangedWeaponEquipment(object equipment)
         {
             if (equipment == null) return false;
@@ -122,8 +129,7 @@ namespace GoingMedieval.LLM_NPCs
             {
                 var itemType = HGet(equipment, "ItemType");
                 if (itemType == null || itemType.ToString() != "Weapon") return false;
-                var mode = HGet(equipment, "PrimaryWeaponMode");
-                var at = mode != null ? HGet(mode, "AttackType") : null;
+                var at = ModeAttackType(HGet(equipment, "PrimaryWeaponMode"));
                 if (at == null) return false;
                 return at.ToString() != "Melee";   // RangeChargeBefore / RangeChargeAfter
             }
@@ -144,8 +150,7 @@ namespace GoingMedieval.LLM_NPCs
                     var bp = HGet(eq, "Blueprint");
                     var itemType = bp != null ? HGet(bp, "ItemType") : null;
                     if (itemType == null || itemType.ToString() != "Weapon") continue;
-                    var mode = HGet(eq, "ActiveWeaponMode");
-                    var at = mode != null ? HGet(mode, "AttackType") : null;
+                    var at = ModeAttackType(HGet(eq, "ActiveWeaponMode") ?? HGet(HGet(eq, "Blueprint"), "PrimaryWeaponMode"));
                     if (at != null && at.ToString() != "Melee") return true;
                 }
                 return false;
@@ -189,35 +194,77 @@ namespace GoingMedieval.LLM_NPCs
             catch { return false; }
         }
 
-        // Snapshot of unreserved ranged-weapon piles stored on a stockpile.
+        // Snapshot of unreserved ranged-weapon piles — STOCKPILE-STORED FIRST,
+        // then GROUND piles. v1 only counted stored piles and reported "NONE in
+        // stockpile" while weapons lay in plain sight on the ground (Ken watched
+        // TWO colonies die around unclaimed arms). A weapon you can walk to IS
+        // a weapon. Also counts melee piles so the report never again claims
+        // an empty armory that isn't.
+        public static int LastRangedStored, LastRangedGround, LastMeleeSeen;
+        // DIAG (sling invisible 2026-07-11 19:20): a crafted sling reached
+        // TargetReached yet the census read ranged 0 — log WHY a known-ranged
+        // id fails classification, once per id per session.
+        private static readonly string[] _knownRangedIds =
+            { "sling", "sling_staff", "short_bow", "war_bow", "long_bow", "curved_bow", "light_crossbow", "crossbow", "heavy_crossbow" };
+        private static readonly HashSet<string> _diagLogged = new HashSet<string>();
         private static List<object> FindRangedWeaponPiles()
         {
-            var result = new List<object>();
+            var storedList = new List<object>(); var groundList = new List<object>();
+            LastRangedStored = LastRangedGround = LastMeleeSeen = 0;
             try
             {
                 _pileMgrType = _pileMgrType ?? FindTypeByName("ResourcePileManager");
                 var mgr = _pileMgrType != null ? SingletonInstance(_pileMgrType) : null;
                 var piles = (_pileMgrType?.GetProperty("AllPileInstances")?.GetValue(mgr, null)
                              ?? _pileMgrType?.GetProperty("AllPiles")?.GetValue(mgr, null)) as IEnumerable;
-                if (piles == null) return result;
+                if (piles == null) return storedList;
                 foreach (var pile in piles)
                 {
                     if (pile == null) continue;
                     try
                     {
-                        var stored = pile.GetType().GetMethod("IsStoredOnStockpile", BindingFlags.Public | BindingFlags.Instance);
-                        if (stored != null && !(bool)stored.Invoke(pile, null)) continue;
                         if (HGet(pile, "equipTarget") != null) continue;   // already reserved
                         var bp = HGet(pile, "Blueprint");
                         var id = bp?.GetType().GetMethod("GetID", BindingFlags.Public | BindingFlags.Instance)?.Invoke(bp, null) as string;
                         if (id == null) continue;
-                        if (IsRangedWeaponEquipment(GetEquipmentBlueprint(id))) result.Add(pile);
+                        bool knownRanged = false;
+                        foreach (var kr in _knownRangedIds)
+                            if (id == kr || id.EndsWith("_" + kr, StringComparison.OrdinalIgnoreCase)) { knownRanged = true; break; }
+                        // QUALITY VARIANTS (ground truth ProductionStepSpawnProduct:218):
+                        // quality items spawn as '<quality>_<id>' piles (good_sling)
+                        // — EquipmentRepository.GetByID misses them, which made 2
+                        // crafted slings invisible (2026-07-11 19:40, worldCount=2
+                        // vs ranged 0). The Resource blueprint carries its OWN
+                        // EquipmentBlueprint (the game's CheckAchievements uses it)
+                        // — read that first, repo lookup only as fallback.
+                        var eq = HGet(bp, "EquipmentBlueprint") ?? GetEquipmentBlueprint(id);
+                        if (eq == null)
+                        {
+                            if (knownRanged && _diagLogged.Add(id))
+                                LLMNPCsPlugin.LogToFile($"[EquipManager] DIAG '{id}' pile EXISTS but EquipmentRepository.GetByID returned null — classification impossible");
+                            continue;
+                        }
+                        bool ranged = IsRangedWeaponEquipment(eq);
+                        if (knownRanged && !ranged && _diagLogged.Add(id))
+                            LLMNPCsPlugin.LogToFile($"[EquipManager] DIAG '{id}' pile classified NOT-ranged: ItemType={HGet(eq, "ItemType")} primaryMode={HGet(eq, "PrimaryWeaponMode")} attackType={ModeAttackType(HGet(eq, "PrimaryWeaponMode"))}");
+                        bool weapon = ranged;
+                        if (!ranged)
+                        {
+                            try { weapon = HGet(eq, "ItemType")?.ToString() == "Weapon"; } catch { }
+                            if (weapon) LastMeleeSeen++;
+                            continue;
+                        }
+                        var storedM = pile.GetType().GetMethod("IsStoredOnStockpile", BindingFlags.Public | BindingFlags.Instance);
+                        bool isStored = storedM != null && (bool)storedM.Invoke(pile, null);
+                        if (isStored) { storedList.Add(pile); LastRangedStored++; }
+                        else { groundList.Add(pile); LastRangedGround++; }
                     }
                     catch { }
                 }
             }
             catch { }
-            return result;
+            storedList.AddRange(groundList);   // prefer stored, but ground COUNTS
+            return storedList;
         }
 
         private static bool AssignPile(object pile, object model, object inventory)
@@ -268,7 +315,13 @@ namespace GoingMedieval.LLM_NPCs
 
                 var piles = FindRangedWeaponPiles();
                 triedPiles = piles.Count;
-                if (piles.Count == 0) { LastResult = $"equip: {missing} hunter(s) need a ranged weapon but NONE in stockpile (craft one)"; LLMNPCsPlugin.LogToFile("[EquipManager] " + LastResult); return 0; }
+                if (piles.Count == 0)
+                {
+                    // HONEST census — never again "NONE" over a visible armory.
+                    LastResult = $"equip: {missing} hunter(s) need a ranged weapon — piles seen: ranged 0 (stored 0, ground 0), melee {LastMeleeSeen} (craft a bow/sling)";
+                    LLMNPCsPlugin.LogToFile("[EquipManager] " + LastResult);
+                    return 0;
+                }
 
                 int pi = 0;
                 foreach (var (model, inv, name) in needy)

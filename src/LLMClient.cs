@@ -115,25 +115,58 @@ namespace GoingMedieval.LLM_NPCs
         // OpenRouter has no NPC-persona server; personas live HERE per npc.
         private static readonly System.Collections.Generic.Dictionary<string, string> _personas
             = new System.Collections.Generic.Dictionary<string, string>();
-        private static readonly System.Collections.Generic.Queue<DateTime> _spend = new System.Collections.Generic.Queue<DateTime>();
+        // ── #35 BUDGET LANES: colony-critical tasks must NEVER be starved by
+        // NPC chatter (Llangefni died with suppressed=703 — every survival
+        // decision, including the unanswered story event, lost the race to
+        // dialogue). Non-critical tasks may only fill the window up to
+        // (cap - reserve); critical tasks may use the FULL cap, so at least
+        // ReservedCriticalCalls slots are always available to them.
+        public static int ReservedCriticalCalls = 3;
+        private static readonly System.Collections.Generic.HashSet<string> _criticalTasks =
+            new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "story_event", "planner", "death_history", "siteplan", "architect" };
+        private static readonly System.Collections.Generic.Queue<System.Collections.Generic.KeyValuePair<DateTime, bool>> _spend
+            = new System.Collections.Generic.Queue<System.Collections.Generic.KeyValuePair<DateTime, bool>>();
         private static readonly object _spendLock = new object();
         public static int SuppressedCount = 0;
+        public static int CriticalSuppressedCount = 0;   // should stay 0 unless critical itself saturates the cap
+
+        /// <summary>Telemetry: window usage split by lane, e.g. "spent 5/8 (crit 1) suppressed=31 (crit 0)".</summary>
+        public static string LaneReport()
+        {
+            lock (_spendLock)
+            {
+                var cutoff = DateTime.UtcNow.AddHours(-1);
+                while (_spend.Count > 0 && _spend.Peek().Key < cutoff) _spend.Dequeue();
+                int crit = 0;
+                foreach (var s in _spend) if (s.Value) crit++;
+                return $"spent {_spend.Count}/{MaxCallsPerHour} (crit {crit}, {ReservedCriticalCalls} reserved) suppressed={SuppressedCount} (crit {CriticalSuppressedCount})";
+            }
+        }
 
         private static bool TrySpendBudget(string what)
         {
             lock (_spendLock)
             {
                 var cutoff = DateTime.UtcNow.AddHours(-1);
-                while (_spend.Count > 0 && _spend.Peek() < cutoff) _spend.Dequeue();
-                if (_spend.Count >= MaxCallsPerHour)
+                while (_spend.Count > 0 && _spend.Peek().Key < cutoff) _spend.Dequeue();
+                bool critical = !string.IsNullOrEmpty(what) && _criticalTasks.Contains(what);
+                int laneCap = critical ? MaxCallsPerHour : Math.Max(0, MaxCallsPerHour - ReservedCriticalCalls);
+                if (_spend.Count >= laneCap)
                 {
                     SuppressedCount++;
-                    if (SuppressedCount % 10 == 1)
-                        LLMNPCsPlugin.LogToFile($"[LLMClient] BUDGET: suppressed '{what}' ({_spend.Count}/{MaxCallsPerHour} used this hour, {SuppressedCount} suppressed total) — deterministic fallbacks take over");
+                    if (critical)
+                    {
+                        // Rare and severe — a critical task hit the FULL cap. Always log.
+                        CriticalSuppressedCount++;
+                        LLMNPCsPlugin.LogToFile($"[LLMClient] BUDGET: CRITICAL suppressed '{what}' ({_spend.Count}/{MaxCallsPerHour} full cap reached, crit-suppressed {CriticalSuppressedCount} total)");
+                    }
+                    else if (SuppressedCount % 10 == 1)
+                        LLMNPCsPlugin.LogToFile($"[LLMClient] BUDGET: suppressed '{what}' ({_spend.Count}/{laneCap} dialogue lane full, {SuppressedCount} suppressed total) — deterministic fallbacks take over");
                     return false;
                 }
-                _spend.Enqueue(DateTime.UtcNow);
-                LLMNPCsPlugin.LogToFile($"[LLMClient] BUDGET: spend {_spend.Count}/{MaxCallsPerHour} ({what})");
+                _spend.Enqueue(new System.Collections.Generic.KeyValuePair<DateTime, bool>(DateTime.UtcNow, critical));
+                LLMNPCsPlugin.LogToFile($"[LLMClient] BUDGET: spend {_spend.Count}/{MaxCallsPerHour} ({what}{(critical ? " [CRITICAL LANE]" : "")})");
                 return true;
             }
         }
@@ -468,7 +501,7 @@ namespace GoingMedieval.LLM_NPCs
             return null;
         }
 
-        public async Task<string> GetRawResponseAsync(List<Message> messages, LLMTraceMetadata traceMetadata = null, string task = "npc_to_npc")
+        public async Task<string> GetRawResponseAsync(List<Message> messages, LLMTraceMetadata traceMetadata = null, string task = "npc_to_npc", int maxTokens = 256)
         {
             if (!TrySpendBudget(task)) return null;   // governor
             var url = $"{_baseUrl}/v1/chat/completions";
@@ -483,7 +516,10 @@ namespace GoingMedieval.LLM_NPCs
                 ["messages"] = msgArray,
                 ["stream"] = false,
                 ["temperature"] = _temperature,
-                ["max_tokens"] = 256
+                // 256 default suits one-liner decisions; structured outputs
+                // (planner JSON) truncate mid-document at 256 and parse-fail
+                // (burned 4 critical calls on 2026-07-11) — callers size it.
+                ["max_tokens"] = maxTokens
             };
             if (Provider == "openrouter") payload["model"] = ModelForTask(task);   // required upstream
 

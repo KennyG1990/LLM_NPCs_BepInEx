@@ -36,6 +36,154 @@ namespace GoingMedieval.LLM_NPCs
             ("Tailoring", new[]{0x800}), ("AnimalHandling", new[]{0x10000}), ("Art", new[]{0x20000}),
         };
 
+        // CRISIS (#37): when the colony is starving, skill/passion routing YIELDS.
+        // Everyone's food jobs go to priority 1 (hunt, harvest, plant, cook, haul,
+        // animals — a farmer can BREED livestock, per Ken); research/art drop to 4.
+        // Applied once per crisis entry, restored by normal RouteAll on exit.
+        private static bool _crisisApplied = false;
+        private static readonly int[] CrisisFoodJobs = { 0x20, 0x10, 0x40, 0x400, 1, 0x10000, 0x100000 }; // Hunting,Harvesting,PlantCropfields,Cooking,Hauling,Animal,Fishing
+        private static readonly int[] CrisisSuspendJobs = { 0x1000, 0x20000 };                            // Research, Art
+
+        public static string CrisisRouteAll(List<Settler> settlers)
+        {
+            try
+            {
+                if (_crisisApplied) return LastResult;
+                var jobTypeT = FindType("NSMedieval.State.WorkerJobs.JobType");
+                if (jobTypeT == null) return LastResult = "jobs: no JobType";
+                int applied = 0;
+                foreach (var s in settlers)
+                {
+                    if (s == null || s.gameObject == null) continue;
+                    if (!GameBridge.TryGetValidatedSettlerIdentity(s.gameObject, out _, out _, out var rc)) continue;
+                    var agent = GameBridge.GetGoapAgent(rc);
+                    var change = agent?.GetType().GetMethod("ChangeJobPriority", BindingFlags.Public | BindingFlags.Instance);
+                    if (change == null) continue;
+                    foreach (var j in CrisisFoodJobs)
+                        try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, j), (object)1 }); } catch { }
+                    foreach (var j in CrisisSuspendJobs)
+                        try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, j), (object)4 }); } catch { }
+                    applied++;
+                }
+                if (applied > 0)
+                {
+                    _crisisApplied = true;
+                    _routed.Clear();   // normal routing re-applies after the crisis
+                    LastResult = $"jobs: ⚠CRISIS — ALL {applied} settler(s) to food work (hunt/harvest/plant/cook/haul/animals prio 1, research/art suspended)";
+                    LLMNPCsPlugin.LogToFile("[JobRouter] " + LastResult);
+                }
+                return LastResult;
+            }
+            catch (Exception ex) { return LastResult = "crisis jobs EXC: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>Crisis over: allow skill routing to reassert.</summary>
+        public static void ExitCrisis() { _crisisApplied = false; }
+
+        // ── BUILD PRESSURE (coherence fix, eyes-on-screen 2026-07-11) ──
+        // The fletcher blueprint sat "all buildable" for HOURS while the JOBS
+        // grid showed Construct at 3/4/4 for everyone (Giles Fish=1 by the
+        // river, Linyeve Carp=1) — the build job could mathematically never
+        // win. Needs beat preferences: while blueprints are pending ≥3 ticks,
+        // the best-Construction-skill settler gets Construct prio 1; released
+        // back to 3 when the queue clears.
+        public static string PressureResult = "(idle)";
+        private const long JobTypeConstruction = 4;
+        private static int _pendingTicks = 0;
+        private static string _boostedName = null;
+
+        public static void EnsureBuildPressure(List<Settler> settlers, int pendingBlueprints)
+        {
+            try
+            {
+                var jobTypeT = FindType("NSMedieval.State.WorkerJobs.JobType");
+                if (jobTypeT == null || settlers == null) return;
+
+                if (pendingBlueprints <= 0)
+                {
+                    _pendingTicks = 0;
+                    if (_boostedName != null)
+                    {
+                        SetConstructPrio(settlers, _boostedName, jobTypeT, 3);
+                        LLMNPCsPlugin.LogToFile($"[JobRouter] build-pressure released: {_boostedName} Construct→3 (no blueprints pending)");
+                        PressureResult = $"released ({_boostedName} back to 3)";
+                        _boostedName = null;
+                    }
+                    else PressureResult = "(idle)";
+                    return;
+                }
+
+                _pendingTicks++;
+                if (_boostedName != null) { PressureResult = $"{_boostedName} Construct=1 ({pendingBlueprints} pending)"; return; }
+                if (_pendingTicks < 3) { PressureResult = $"watching ({pendingBlueprints} pending, tick {_pendingTicks}/3)"; return; }
+
+                // pick the best-Construction-skill settler
+                string bestName = null; int bestLvl = -1;
+                foreach (var s in settlers)
+                {
+                    if (s == null || s.gameObject == null) continue;
+                    if (!GameBridge.TryGetValidatedSettlerIdentity(s.gameObject, out _, out var name, out var rc)) continue;
+                    int lvl = ReadConstructionLevel(rc);
+                    if (lvl > bestLvl) { bestLvl = lvl; bestName = name; }
+                }
+                if (bestName == null) { PressureResult = "no settler resolvable"; return; }
+                if (SetConstructPrio(settlers, bestName, jobTypeT, 1))
+                {
+                    _boostedName = bestName;
+                    PressureResult = $"{bestName} Construct→1 ({pendingBlueprints} pending, Construction lvl {bestLvl})";
+                    LLMNPCsPlugin.LogToFile($"[JobRouter] build-pressure: {PressureResult}");
+                }
+                else PressureResult = "ChangeJobPriority failed";
+            }
+            catch (Exception ex) { PressureResult = "EXC: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        private static bool SetConstructPrio(List<Settler> settlers, string name, Type jobTypeT, int prio)
+        {
+            foreach (var s in settlers)
+            {
+                if (s == null || s.gameObject == null) continue;
+                if (!GameBridge.TryGetValidatedSettlerIdentity(s.gameObject, out _, out var n, out var rc) || n != name) continue;
+                var agent = GameBridge.GetGoapAgent(rc);
+                var change = agent?.GetType().GetMethod("ChangeJobPriority", BindingFlags.Public | BindingFlags.Instance);
+                if (change == null) return false;
+                try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, JobTypeConstruction), (object)prio }); return true; }
+                catch { return false; }
+            }
+            return false;
+        }
+
+        private static int ReadConstructionLevel(object rc)
+        {
+            try
+            {
+                object HG(object o, string pn)
+                {
+                    if (o == null) return null;
+                    for (var t = o.GetType(); t != null; t = t.BaseType)
+                    {
+                        var p = t.GetProperty(pn, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                        if (p != null) { try { var v = p.GetValue(o, null); if (v != null) return v; } catch { } }
+                        var f = t.GetField(pn, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                        if (f != null) { try { var v = f.GetValue(o); if (v != null) return v; } catch { } }
+                    }
+                    return null;
+                }
+                var model = HG(rc, "HumanoidInstance") ?? rc;
+                var owner = HG(model, "Skills") ?? HG(model, "WorkerSkills");
+                var list = owner != null ? HG(owner, "Skills") as IEnumerable : null;
+                if (list == null) return 0;
+                foreach (var sk in list)
+                {
+                    if (sk == null) continue;
+                    if (HG(sk, "Id")?.ToString()?.Replace(" ", "") != "Construction") continue;
+                    try { return Convert.ToInt32(HG(sk, "Level") ?? 0); } catch { return 0; }
+                }
+            }
+            catch { }
+            return 0;
+        }
+
         public static string RouteAll(List<Settler> settlers)
         {
             try

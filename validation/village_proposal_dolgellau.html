@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dolgellau — Village Proposal (LLM architect, live design)</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: Segoe UI, system-ui, sans-serif; margin: 24px; max-width: 1000px; }
+  h1 { font-size: 1.35rem; margin-bottom: 2px; }
+  .sub { color: #777; margin-bottom: 18px; }
+  .cols { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .legend { font-size: .85rem; line-height: 1.7; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  table.facts { border-collapse: collapse; font-size: .9rem; margin-top: 14px; }
+  table.facts td { padding: 3px 12px 3px 0; vertical-align: top; }
+  table.facts td:first-child { color: #888; white-space: nowrap; }
+  .note { background: rgba(200,160,60,.12); border-left: 3px solid #c8a03c; padding: 8px 12px; font-size: .88rem; margin-top: 16px; }
+</style>
+</head>
+<body>
+<h1>Dolgellau — Village Proposal</h1>
+<div class="sub">Design source: the in-game LLM architect (persisted BuiltState, village center (90,·,156)) — strategy: <b>common house</b>. The 12×11 building below is <b>already built and occupied</b>; slots N‑E‑S‑W‑NE‑SE‑SW‑NW ring the plaza for the architect's next buildings.</div>
+
+<div class="cols">
+<svg width="620" height="560" viewBox="0 0 310 280" role="img" aria-label="Village plan">
+  <!-- marsh backdrop -->
+  <rect x="0" y="0" width="310" height="280" fill="#2e4a42" opacity=".25"/>
+  <!-- dry ground patch -->
+  <ellipse cx="155" cy="150" rx="130" ry="115" fill="#7a9a5c" opacity=".55"/>
+
+  <!-- street ring (gap 2 around plaza) -->
+  <rect x="119" y="119" width="72" height="72" fill="none" stroke="#b8a888" stroke-width="8" opacity=".5"/>
+
+  <!-- plaza 7x7 -->
+  <rect x="127" y="127" width="56" height="56" fill="#d8c9a3"/>
+  <circle cx="155" cy="155" r="6" fill="#c0392b"/>
+  <text x="155" y="170" font-size="7" text-anchor="middle" fill="#5a4a2a">PLAZA 7×7 · hearth</text>
+
+  <!-- NORTH slot: the common house 12x11 (BUILT) -->
+  <g>
+    <rect x="107" y="21" width="96" height="88" fill="#8a6f4d" stroke="#4a3a24" stroke-width="2"/>
+    <!-- north strip: hall 6 | workshop 3 -->
+    <rect x="115" y="29" width="48" height="24" fill="#caa96e"/>
+    <text x="139" y="43" font-size="7" text-anchor="middle">hall 6×3</text>
+    <circle cx="139" cy="48" r="2.5" fill="#c0392b"/>
+    <rect x="171" y="29" width="24" height="24" fill="#b9c98e"/>
+    <text x="183" y="43" font-size="6" text-anchor="middle">wkshp 3×3</text>
+    <!-- corridor spine -->
+    <rect x="115" y="61" width="80" height="8" fill="#e8dcc0"/>
+    <text x="155" y="67" font-size="5" text-anchor="middle" fill="#7a6a4a">corridor</text>
+    <!-- south strip: dorm 5 | pantry 4 -->
+    <rect x="115" y="77" width="40" height="24" fill="#9db8d2"/>
+    <text x="135" y="91" font-size="7" text-anchor="middle">dorm 5×3</text>
+    <rect x="163" y="77" width="32" height="24" fill="#d2b48c"/>
+    <text x="179" y="91" font-size="6.5" text-anchor="middle">pantry 4×3</text>
+    <!-- plaza-facing door -->
+    <rect x="151" y="105" width="8" height="6" fill="#e8dcc0" stroke="#4a3a24" stroke-width="1"/>
+    <text x="155" y="16" font-size="7" text-anchor="middle" font-weight="bold">✔ BUILT — 'common house' 12×11 (N slot)</text>
+  </g>
+
+  <!-- reserved slots -->
+  <g fill="none" stroke="#888" stroke-dasharray="4 3" stroke-width="1.5" opacity=".8">
+    <rect x="199" y="119" width="72" height="72"/>  <!-- E -->
+    <rect x="119" y="199" width="72" height="72"/>  <!-- S -->
+    <rect x="39"  y="119" width="72" height="72"/>  <!-- W -->
+    <rect x="209" y="35"  width="62" height="62"/>  <!-- NE -->
+    <rect x="209" y="213" width="62" height="62"/>  <!-- SE -->
+    <rect x="39"  y="213" width="62" height="62"/>  <!-- SW -->
+    <rect x="39"  y="35"  width="62" height="62"/>  <!-- NW -->
+  </g>
+  <g font-size="7" fill="#888" text-anchor="middle">
+    <text x="235" y="158">E slot</text><text x="155" y="238">S slot</text>
+    <text x="75"  y="158">W slot</text><text x="240" y="69">NE</text>
+    <text x="240" y="247">SE</text><text x="70" y="247">SW</text><text x="70" y="69">NW</text>
+  </g>
+  <text x="12" y="272" font-size="7" fill="#3a5a50">marsh / shallow water (86% of map) — every slot is checked DRY before commit</text>
+</svg>
+
+<div class="legend">
+  <b>Legend</b><br>
+  <span class="sw" style="background:#caa96e"></span>hall (hearth room, 6 wide)<br>
+  <span class="sw" style="background:#9db8d2"></span>dorm (beds, 5 wide)<br>
+  <span class="sw" style="background:#d2b48c"></span>pantry (food storage, 4 wide)<br>
+  <span class="sw" style="background:#b9c98e"></span>workshop (crafting, 3 wide)<br>
+  <span class="sw" style="background:#e8dcc0"></span>corridor spine + plaza door<br>
+  <span class="sw" style="background:#d8c9a3"></span>plaza (village center, fixed once)<br>
+  <span class="sw" style="border:1.5px dashed #888"></span>reserved slot (future architect buildings)
+
+  <table class="facts">
+    <tr><td>Design by</td><td>in-game LLM architect (task "architect", critical budget lane)</td></tr>
+    <tr><td>Strategy</td><td>common_house — one shared building for the current pop 4</td></tr>
+    <tr><td>Program</td><td>hall:6, dorm:5, pantry:4, workshop:3 → packs to 12×11</td></tr>
+    <tr><td>Placement</td><td>N slot of the plaza ring, door facing the square</td></tr>
+    <tr><td>Status</td><td><b>BUILT & occupied</b> (eyes-on 2026-07-12 14:28: settlers sleeping inside)</td></tr>
+    <tr><td>Growth</td><td>pop grows / needs change → architect re-consults → next building takes the next dry slot; individual houses per NPC are the alternate strategy it may choose</td></tr>
+  </table>
+
+  <div class="note"><b>Site reality:</b> Dolgellau sits in marsh (map is 86% water). The layout engine rejects wet cells, which is why expansion beyond the N slot currently reports "no dry 12×11 footprint" — next buildings will be smaller programs or wait for drier slots. This is honest terrain constraint, not a bug.</div>
+</div>
+</div>
+</body>
+</html>

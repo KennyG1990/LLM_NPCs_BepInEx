@@ -1,0 +1,12 @@
+home.x=117
+home.y=5
+home.z=151
+farm.placed=1
+house.ox=112
+house.oz=146
+house.ay=5
+house.ver=2
+house.seed=359907494
+house.pop=5
+house.roofs=12
+house.complete=1

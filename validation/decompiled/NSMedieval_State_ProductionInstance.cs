@@ -146,10 +146,15 @@ public class ProductionInstance : IGameDisposable, IDisposable, IFVSerializable
 		order = ProductionOrder.Work;
 		foreach (Resource allUsableResource in this.blueprint.AllUsableResources)
 		{
+			resourceFilter.CacheDefaultAllowedResources(allUsableResource);
 			if (!this.blueprint.ForbiddenOnStart.Contains(allUsableResource.GetID()))
 			{
 				resourceFilter.AddAllowedResource(allUsableResource);
 			}
+		}
+		if (this.blueprint.Repair)
+		{
+			resourceFilter.SetRepairHitPointsPercent(new IntRange(0, 90));
 		}
 	}
 
@@ -178,6 +183,10 @@ public class ProductionInstance : IGameDisposable, IDisposable, IFVSerializable
 		}
 		if (afterLoading)
 		{
+			foreach (Resource allUsableResource in blueprint.AllUsableResources)
+			{
+				resourceFilter.CacheDefaultAllowedResources(allUsableResource);
+			}
 			foreach (ResourceInstance resource in storage.Resources)
 			{
 				ResourceStatsProducer.ProduceResourceStats(resource, resource.Blueprint, resource.Stats);
@@ -542,6 +551,7 @@ public class ProductionInstance : IGameDisposable, IDisposable, IFVSerializable
 			break;
 		case ProductionStepType.SpawnProduct:
 		case ProductionStepType.SpawnDismantleProduct:
+		case ProductionStepType.SpawnFixedItem:
 		{
 			if (!OwnerProductionComponentInstance.OwnerBuilding.Village.SavedObjectsSpawned)
 			{
@@ -821,7 +831,7 @@ public class ProductionInstance : IGameDisposable, IDisposable, IFVSerializable
 			IL_00c2:
 			foreach (ResourceInstance resource in storage.Resources)
 			{
-				if (!resourceFilter.IsValid(resource))
+				if (!resourceFilter.IsValid(resource, blueprint.GetHitpointsPercentRangeType(resource.Blueprint)))
 				{
 					storage.DropResourceInstance(resource, OwnerProductionComponentInstance.GetGridPosition());
 					goto IL_00c2;
@@ -842,7 +852,7 @@ public class ProductionInstance : IGameDisposable, IDisposable, IFVSerializable
 				}
 				return;
 			}
-			while (resourceFilter.IsValid(current2));
+			while (resourceFilter.IsValid(current2, blueprint.GetHitpointsPercentRangeType(current2.Blueprint)));
 			secondaryIngredientStorage.DropResourceInstance(current2, OwnerProductionComponentInstance.GetGridPosition());
 		}
 	}

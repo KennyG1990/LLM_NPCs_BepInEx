@@ -1354,3 +1354,391 @@ Chronicle fodder observed (for #27 Death History / doc 08): "The Death of Margar
 **Cleanup queued**: orphan campfire blueprint at (130,100) from the race (cancel-blueprints-beyond-WorkRadius slice); fletchers_table NO-SKILLED-WORKER (capability chain); Llangefni old-camp stockpile goods migration.
 
 **Watch item**: budget suppressed=64 spike in one session earlier — NPC dialogue churn still the biggest call consumer (#23 batching).
+
+---
+
+## SESSION LEDGER — #27 DeathChronicler built; SECOND COLONY WIPE discovered (2026-07-11 ~14:15)
+
+**#27 DeathChronicler v1 BUILT + DEPLOYED** (validation pending a live colony): roster-diff death detection (3-tick confirm, HasDied ground truth CreatureBase:302), chronicle written by LLM from the settler's REAL memory context (GetContextForPromptAsync), persisted via /api/colony/event (server shape ground-truthed: narrative+rec — first attempt used wrong field names, caught before deploy), survivors each get a death_of_companion memory (RecordEvent, importance 9), plain-file copy in validation/chronicles/. Budget-deferred chronicles retry. Telemetry line "deaths:".
+
+**LLANGEFNI WIPED** during an unattended ~9h morning run (2 in-game years, ended Spring 1355): mod alive on relaunch but "Worker-like components found: 0". Colony built visibly (walled yard, farm plots, paved stockpile with barrels) then died out. Evidence from final morning telemetry (11:07): suppressed=703 (dialogue churn starved the call budget), EventInteractor detected an event but read "(untitled) opts=0" — TEXT EXTRACTION FAILED (GetDialogContent(0) returned thin content; likely wrong dialogIndex or Options live on GameEvent.DialogContent not the built DialogContent), so no event was ever answered. fletchers_table was still NO-SKILLED-WORKER at the end — colony never armed itself (same fatal pattern as Cockhamsted).
+
+**Priority queue for next session:**
+1. Roll back to a pre-collapse Llangefni autosave (many exist) → new DLL governs a LIVE colony.
+2. Fix EventInteractor extraction: decompile GameEvent.DialogContent (nested type: GameEvent+DialogContent), read Options from the EVENT's own dialog content; find the current dialogShowingIndex rather than assuming 0.
+3. #23 budget: per-task budget reservation — colony-critical calls (story_event, planner, death_history) must NEVER be starved by NPC chatter (703 suppressed proves the governor needs lanes, not just a cap).
+4. Autopsy the morning autosave chain: what killed them (raid? starvation? disease?) — feeds #27 validation and the capability-chain fixes.
+5. Weapons capability chain: NO-SKILLED-WORKER on fletchers_table has now contributed to TWO wipes — the colony must react (lower-tier weapon path: sling via campfire? crafting spot?) when the skill gate blocks the fletcher.
+
+---
+
+## SESSION LEDGER — CRISIS REACTOR built; BepInEx injection broke host-side (2026-07-11 ~14:50)
+
+**#37 CRISIS REACTOR v1 BUILT + DEPLOYED (compile-clean), validation blocked:**
+- ColonyAlerts.LastNutrition exposed; crisis = nutrition < pop*6.
+- FoodGatherer.Crisis: session caps (HuntCap 16/ForageCap 40 — the exact bounds that starved Llangefni) IGNORED in crisis; per-tick marks raised; ColonyBuilder passes WorkRadius*3 (venture out).
+- JobRouter.CrisisRouteAll: ALL settlers → Hunting/Harvesting/PlantCropfields/Cooking/Hauling/Animal/Fishing prio 1 (Animal = husbandry — Ken: "farmers can literally breed animals"); Research/Art suspended to 4. ExitCrisis lets skill routing reassert.
+- EquipManager v2: ground piles COUNT (stockpile-stored preferred) — v1 reported "NONE in stockpile" over visible weapons twice; honest census (ranged stored/ground + melee seen) in every report.
+- Census line gets "⚠CRISIS(food)" prefix.
+
+**Fresh validation colony created: DOWSBY** (A New Life, Valley, river, 3 settlers: Linyeve Green, Giles Becker, Alric Sollers) — reached Spring day 2, alerts already showing (nutrition=0 until first stockpile) = immediate crisis-reactor test conditions.
+
+**BLOCKER (host-side): BepInEx stopped injecting at the ~14:04 relaunch.** Evidence: no new mod_*.log since 14:03 (previous session logged normally 13:59-14:03), no mod toolbar at main menu, zero BepInEx/plugin lines in the live player.log, stale LogOutput.log dated 6/22. The deployed LLM_NPCs.dll is correct (sha matches build; contains new modules) — the DOORSTOP layer isn't loading at all, so no plugin code runs. Direct-exe launch (unchanged mechanism, worked for months) and a via:steam attempt both failed (steam attempt: process never seen — Steam possibly needs foreground interaction). NOT a mod-code failure.
+
+**For Ken to check on the host (fastest → slowest):**
+1. Did Going Medieval auto-update today? (Steam updates can remove/replace winhttp.dll / doorstop files in the game dir.)
+2. Antivirus/Defender quarantine of E:\SteamLibrary\...\Going Medieval\winhttp.dll (proxy DLLs are a common false positive).
+3. Launch the game from Steam manually and look for the LLM toolbar top-right at the main menu.
+
+**Next session (once injection works): load Dowsby → expect "⚠CRISIS(food)" census, caps ignored (hunt/forage counts climbing past 16/40), all-hands food jobs, honest equip census — then watch them NOT starve.**
+
+---
+
+## SESSION LEDGER — #35 budget lanes ✅ · #34 read/answer ground-truthed · doorstop launch root-caused (2026-07-11 ~18:05, Claude Code)
+
+**1. #35 BUDGET LANES ✅ (live on screen).** `LLMClient.TrySpendBudget` now has lanes: critical tasks {story_event, planner, death_history, siteplan} may use the FULL MaxCallsPerHour; everything else (dialogue/chatter) is capped at cap−3, so 3 slots can never be eaten by small talk (Llangefni died at suppressed=703 with its story event unanswered). Critical suppressions always log loudly (`CriticalSuppressedCount` should stay 0). Task strings verified at real call sites, not guessed ("siteplan" not yet used anywhere — kept as future-proofing; HouseSitePlanner uses "planner"). VALIDATED: telemetry `budget: 8/hr cap, spent 2/8 (crit 0, 3 reserved) suppressed=0 (crit 0)` live in Dowsby — the new line format doubles as the fresh-DLL proof.
+
+**2. #34 extraction v3 ✅ — the "(untitled) opts=0" bug is dead.** Root cause (decompiled NSMedieval.Dialogs.Data.DialogContent/DialogOption): WindowTitle/ContentTitle/ContentBodyText/Options/Text are public FIELDS — the GetProperty-only reflection read null for ALL of them. Fix: `Member()` field-or-property accessor (+ Dialogs field fallback on the blueprint walk, + `dialogs=N` diagnostic in the DETECTED log). VALIDATED EYES-ON-SCREEN: opened the FRIENDLY VISIT dialog in-game (screenshot) and the mod log line reproduces it verbatim — `EVENT DETECTED 'Friendly Visit [game_event_trader_visitor]' dialogs=1 options=[OK] body: A rangy hawker empties their pack…`.
+
+**3. #34 apply path CORRECTED — v1 "applied=True" was a NO-OP.** Ground truth (decompiled GameEventSystemController + ShowDialogPhaseBranching): `EventOptionChosen(instance, int)` is a NOTIFICATION RELAY and its int is the DIALOG index (dialogShowingIndex), not the option. The REAL choice registration is the current phase''s `OnClose(selectedOptionIndex)` → sets `switchPhaseIndexNextTick` → next `Tick()` advances into `choiceDestinationPhases[chosen]`. ApplyChoice v2 walks `instance.stateMachine.currentPhase` (field names decompile-verified) and invokes `OnClose(int)`; if the phase has no OnClose it refuses HONESTLY (3 attempts → `NEEDS PLAYER (no dialog phase awaiting an answer)`). Also: sole-option dialogs are acknowledged deterministically (not a blind click — no alternatives exist); ≥2 options remain LLM-or-nobody. VALIDATED (negative/honest path): trader event''s current phase is `TraderVisitPhase` (no OnClose) — mod logs "no dialog awaiting an answer", which is TRUE (the visit runs its course; the news dialog is optional reading). ◐ REMAINING: positive path on a real blocking choice event (`ShowDialogPhaseBranching` live) — expect OnClose invoked, dialog closes if open, branch advances. Needs a natural event in Dowsby.
+
+**4. DOORSTOP INJECTION ROOT CAUSE [REPRODUCED] — the "BepInEx stopped injecting" blocker from 14:04.** A game process launched by the DASHBOARD inherits `DOORSTOP_*` env vars whenever the dashboard itself was auto-spawned by the modded game → Unity Doorstop sees "already initialized" and silently skips BepInEx. Steam/clean-shell launches inject fine. EVIDENCE: same exe minutes apart — dashboard launch: no mod log; clean-env `Start-Process`: `mod_20260711_172244.log` + chainloader complete (×3 subsequent launches all injected). FIX SHIPPED: `gm_devops._launch` strips `DOORSTOP_*` from the child env (py_compile OK; takes effect on next dashboard restart). INTERIM PROTOCOL: launch via clean PowerShell `Start-Process "E:\...\Going Medieval.exe" -WorkingDirectory <gamedir>`.
+
+**5. Environment upgrade for successors:** Claude Code''s PowerShell reaches localhost:8714 DIRECTLY — no Chrome in-page-fetch relay needed for dashboard APIs (that handoff gotcha is Cowork-specific). Game screenshots still go via a browser tab on `/api/game/screen`.
+
+### AAR
+- **Sustain:** (a) decompile-before-reflection caught three name-lies in one session (fields-not-properties; dialogShowingIndex ≠ optionIndex; TraderVisitPhase not a dialog phase) — the rule held: every one of them was invisible to reflection-by-name and obvious in source. (b) Eyes-on-screen word-for-word comparison (screenshot vs log) is the extraction proof standard. (c) Honest-failure design paid off same-session: apply v2''s refusal line turned "false success" into a correct diagnosis on its first live run.
+- **Improve (approach):** v1 ApplyChoice trusted a method NAME as semantic proof and reported invocation as effect — the exact "invoked ≠ placed" lie rule #4 exists for. New personal rule: a write-path claim must cite the decompiled CONSUMER of the write (who reads the value I set?). Also: a background poll captured its baseline timestamp AFTER firing the action it watched → false "injection FAILED" (one wasted diagnostic loop). Capture t0 BEFORE acting.
+- **Improve (tools):** (a) per-type ilspycmd cannot enumerate types (had to regex-scan raw DLL bytes to find `ShowDialogPhaseBranching`) → Ken is planning a FULL-ASSEMBLY API index with Cowork — endorsed, spec discussed (signatures index + greppable tree, sha-stamped per game patch, Compile-Removed). (b) dashboard `_launch` env fix shipped (see 4). (c) `/api/dev/build` sometimes drops the HTTP connection while the build succeeds — check `built_dll.mtime/sha` before re-running.
+- **Worst-implementation pick:** EventInteractor v1 ApplyChoice (shipped 2026-07-11 morning) — a machine check that validated INVOCATION, not EFFECT, on the single most colony-lethal surface we have (story events). Mechanism of the failure: reflection surface names suggest intent (`EventOptionChosen` reads like a command, is actually a broadcast). Concrete better (now shipped): drive the game''s own consumer (`OnClose`) and log the phase type on every apply so the claim is auditable.
+- Triggers fired: (a) reconcile changed the plan (apply path rewritten after decompile), (c) errors en route (injection failure, false-negative poll, build-connection drops), (e) new gotchas (doorstop env inheritance, DialogContent fields). NOT clean — lessons banked above.
+
+**Open follow-ups queued:** #34 positive path (natural choice event; watch `deciding…` → `CHOSE n` → phase advance); telemetry wording for optional news dialogs ("NEEDS PLAYER" is technically wrong when nothing needs answering — say "no answer needed"); dashboard restart to activate the _launch fix (do at next natural dashboard downtime); full-assembly API index (Cowork, Ken driving).
+
+**Commit point:** `feat(events): ground-truth event dialog read/answer, LLM budget lanes, doorstop launch fix`
+
+## LEDGER ADDENDUM — WeaponChain + dashboard-launch fix validated (2026-07-11 ~18:30, Claude Code)
+
+**WeaponChain module ✅ deployed (weapons-alert reaction owner, #37 slice).** New `src/WeaponChain.cs` + ColonyBuilder wiring + `weapons:` telemetry line. Owns the ranged-weapon pipeline end-to-end: finds ANY constructed station whose `Blueprint.Productions` hosts a ranged recipe (not hardcoded to fletcher), reads each queued weapon order''s `ProductionState`, and on NoSkilledWorker/WaitingForWorker checks every live settler against the game''s OWN `Production.HasSkillsRequired` (manual Key/Value fallback) — a qualified settler gets Crafting priority 1 (once/session), nobody qualified → the unmet skill is NAMED in telemetry. Root defect it fixes: ColonyBuilder''s sling/short_bow queue calls were invisible — ProductionPlanner.LastResult is one shared string overwritten by the campfire call every tick, so "no constructed fletchers_table" never surfaced. FIRST LIVE READ: `weapons: no constructed station hosts a ranged recipe (fletcher build priority pending)` — the real bottleneck (blueprint placed, never built), on screen for the first time. Ground truth: NSMedieval_Model_Production / ProductionComponent / ProductionSystemInstance decompiles; namespaces found via raw-DLL metadata scan (another +1 for the full API index).
+**Remaining to watch (colony-time-gated):** fletcher constructed → sling queues → state visible → boost fires if skill-gated. Also: `NSMedieval.Model.Production` — SkillLevelPair {Key,Value}; station recipes = BuildingBlueprint.Productions.
+
+**Dashboard-launch injection fix ✅ VALIDATED.** Dashboard restarted (single instance, clean env, new `_launch` code); the NEXT deploy cycle launched via `POST /api/dev/game/launch` and INJECTED (`mod_20260711_182416.log`). The clean-shell workaround is retired; normal API dev loop restored.
+
+**Dowsby saved in-game** (folder timestamp 17:11 → 18:23:41, click protocol; the game window had been minimized — restored via Win32 EnumWindows/ShowWindow by PID, a reusable trick when `MainWindowTitle` reads empty and /api/game/* returns "window not found").
+
+**Trader event ended naturally** (`events: (no events)`) — info-only lifecycle completed with zero mod intervention, as designed.
+
+## LEDGER ADDENDUM — answerability gate (coherence fix from the polecat event) (2026-07-11 ~18:45, Claude Code)
+
+**Live coherence catch (goal-mandated player-perspective audit):** the `game_event_polecat_raid` news event carried options `[OK | Jump to Location]` — UI conveniences, not decisions — and the leader burned a CRITICAL-LANE LLM call (spend 6/8, story_event) deliberating between "OK" and a camera pan, on an event whose phase (`AnimalVisitPhase`) could never receive the answer anyway. A player would not deliberate there.
+**Fix deployed (mod_20260711_184000 build):** (1) ANSWERABILITY GATE — the LLM is engaged (and the sole-option ack fires) ONLY when the event''s current phase has `OnClose(int)` (a real dialog phase), re-checked every tick since multi-phase events can move into a dialog phase later; unanswerable events now read `news (no answer needed)` instead of ever reaching `NEEDS PLAYER` (also closes the wording follow-up). (2) TMP rich-text stripped from titles/bodies/options (`<style=…>` was polluting prompts/logs).
+**Validated:** extraction of 2-option events proven live (polecat); gate deployed + colony resumed at speed 3; negative path (`(no events)`) clean. Watch: next ambient event should read `news (no answer needed)` with ZERO LLM spend; first real dialog-phase event = full #34 positive path.
+**Also proven live this cycle:** the critical LANE worked exactly as designed (story_event spent at 6/8 while dialogue was suppressed earlier in the day) — #35''s mechanism observed under real traffic in both directions (squeeze chatter, admit critical).
+
+## LEDGER ADDENDUM — build-pressure rule (the fletcher finally has a builder) (2026-07-11 ~18:55, Claude Code)
+
+**Coherence catch (player-eyes, goal-mandated):** the fletcher blueprint sat "all buildable" for HOURS. JOBS grid read on screen (native-res crop trick: fetch /api/game/screen JPEG → System.Drawing crop → Read): **Construct = 4/4/3 across all settlers** while Giles had Fish=1 (river!) and Linyeve Carp=1 — the build job could mathematically never win the GOAP race. "All buildable" was true and useless: buildable ≠ being-built (rule-4 family).
+**Fix deployed (mod_20260711_185030):** `JobRouter.EnsureBuildPressure` — blueprints pending ≥3 ticks → best-Construction-skill settler gets Construct prio 1; released to 3 when the queue clears. `BlueprintDiagnostics.Pending` exposed; `jobs:` line carries `build-pressure:` state. **VALIDATED LIVE:** `watching (1 pending, tick 1/3)` → `Alric Sollers Construct→1 (1 pending, Construction lvl 7)` (telemetry + mod log). ◐ next observable: fletcher actually CONSTRUCTED → weapons: advances to `sling@fletchers_table=<state>`.
+**Process slip banked:** a chained save→kill script killed the game after the SAVE silently failed (ESC closed the still-open JOBS panel instead of opening the pause menu; Dowsby timestamp unchanged, ~20 min colony time lost). RULE: the kill step must be CONDITIONAL on the save timestamp advancing — never chain past an unverified save. Also: close UI panels before ESC-menu protocols.
+**Also noted on screen:** "Polecat Carcass has decomposed on the stockpile" — carcass hygiene (zoner refuse routing / butcher chain) queued as a coherence item.
+
+## MILESTONE — #34 POSITIVE PATH VALIDATED LIVE: the LLM played the player (2026-07-11 18:56, Claude Code)
+
+**The `game_event_runaway_new` NEW SETTLER event ("Would you dare take Lee in?" — a real ShowDialogPhaseBranching choice) was detected, read, decided, and answered end-to-end with ZERO human input:**
+1. Extraction: full title/body + both options, correct choice dialog found among **13** blueprint dialogs (the field-fix + walk-all-dialogs design proven on the hard case).
+2. Answerability gate PASSED (real dialog phase) → critical-lane LLM call (spend 6/8, crit 1 — lanes working under load, suppressed=37 chatter that hour).
+3. Decision: option 1 — turn Lee away — reason: "We must preserve scarce resources and prioritize arming hunters over risking a potentially cursed newcomer." Grounded in REAL colony state (3 unarmed hunters, tight food) — a defensible player judgment, not a coin flip.
+4. Applied via the game''s own consumer: `ShowDialogPhaseBranching.OnClose(1)` → `applied=True`; event left RunningEvents; **pop stayed 3 (Lee refused — the negative effect verified on screen)**.
+**EXPERIENCE-gate catch (Ken''s eyeball standard vindicated again):** machine state fully advanced but the dialog WINDOW stayed open on screen — a zombie window (headless OnClose skips the UI teardown that a player click performs). Fixed same-hour: `DialogViewManager.CloseSilent()` (decompiled — closes the view WITHOUT re-firing the choice event) invoked after every successful apply; zombie cleared live by clicking the already-applied option. ◐ CloseSilent pending its first live exercise on the next choice event.
+**#34 status: read ✅ · classify ✅ · decide ✅ · apply ✅ · dialog-teardown ◐ (deployed, awaiting next event).** Doc 02''s "engine answers the game''s events as the player" requirement is now DEMONSTRATED; remaining doc-02 scope is the AI-generated/rumor-propagation layer (P5).
+
+## TOOL MILESTONE — full game API index BUILT ✅ (2026-07-11 ~19:40, Claude Code; Ken asked "did you ever build it?")
+
+**`F:\DEV_ENV\projects\Mods\Going Medieval\GameApiIndex\`** (sibling of the repo — deliberately OUTSIDE git):
+- `src\` — the ENTIRE Assembly-CSharp.dll decompiled: **3,558 .cs files** (ilspycmd 8.2.0 project mode, exit 0). Greppable ground truth for every class/method/field in the game.
+- `api_index.txt` — flat signatures index, **54,670 lines**, format `Namespace.Type :: kind :: signature` (kind = class|method|property|FIELD|event — the field/property distinction that caused today''s DialogContent bug is first-class).
+- `INDEX_META.txt` — DLL sha256 + mtime stamp. **REGENERATE AFTER EVERY GAME PATCH** (rerun ilspycmd + `python build_index.py`); verify sha against the installed DLL before trusting.
+- `build_index.py` — the index generator. Known wart: initialized collection fields (`public List<X> Y = new List<X>();`) classify as "method" (regex sees the parens) — the line content is still correct.
+**Acceptance-tested against today''s three name-lies, all one-grep answers now:** (1) `DialogContent ::` → WindowTitle/ContentTitle/ContentBodyText are visibly FIELDS; (2) `EventOptionChosen` → `(GameEventInstance eventInstance, int dialogShowingIndex)` — the trap parameter name is in the signature; (3) `ProductionComponentBlueprint` found instantly with its namespace.
+**USAGE RULE (successors):** grep the INDEX for existence/signatures FIRST (`Select-String api_index.txt -Pattern "X"`), open `src\` for behavior, use the dashboard `/api/dev/decompile` only to freshness-check a specific type against the RUNNING game. Never byte-scan the DLL again.
+
+## MILESTONE — WEAPON CHAIN CLOSED: 3/3 hunters ordered to arms, the killer alert DRAINED (2026-07-11 ~19:52, Claude Code)
+
+**The full chain that contributed to BOTH colony wipes now runs end-to-end deterministically:** alert (hunters unarmed) → station discovery (component blueprint) → order state read → target scaled to need → craft → pile classification → equip orders → **alert gone from telemetry** (`equip: ordered 3/3 hunter(s) (missing=3, piles=5)`; Alric/Giles/Linyeve each logged). ◐ final grade: eyes-on `missing=0` + a settler visibly armed (pickup walk in progress).
+
+**Four game-truth discoveries en route (all now in the API index + HOW_THINGS_WORK.md):**
+1. **Quality/material id prefixes**: crafted items spawn as `<quality>_<material>_<id>` piles (`flimsy_linen_sling`, `good_leather_cow_sling`) — any exact-id lookup misses every real crafted item (ProductionStepSpawnProduct:218). This alone explains "weapons in the stockpile that nobody picks up" from BOTH wipes.
+2. **`Resource.EquipmentBlueprint`** is the correct classification source (repo GetByID misses prefixed ids) — the game''s own CheckAchievements pattern.
+3. **`WeaponMode.WeaponTypeSettings.AttackType`** — AttackType is one hop deeper than the mode; the mode''s ToString prints it, which made a null direct read look impossible.
+4. **JobType full-name resolution** — short-name scan grabs `Unity.Jobs.LowLevel.Unsafe.JobType` first; `Enum.ToObject` throws (WeaponChain boost now uses `NSMedieval.State.WorkerJobs.JobType`).
+
+**TOOLING SHIPPED (Ken''s directives, both live):**
+- **GameApiIndex** (`F:\DEV_ENV\projects\Mods\Going Medieval\GameApiIndex\`): full 3,558-file decompile + 54,670-line signatures index + sha-stamped meta. Acceptance-tested on the day''s three name-lies; then immediately used to crack #1-#4 above (grep → source → fix, minutes each).
+- **HOW_THINGS_WORK.md** (same folder, Ken: "for future mod makers"): the intent layer — 11 sections covering coordinates, construction lifecycle, roofs, stockpiles, production (quality prefixes!), equipment, events/dialogs (the whole answer path), jobs/GOAP, research/food/death, the reflection survival kit, and the doorstop gotcha. STANDING RULE: every new ground-truthed mechanism gets a dated entry — this doc is part of the workflow''s DOCUMENT step now.
+
+**Process lessons banked:** (a) save-gate WORKS (two aborted deploys caught a silently-failed save — the recap screen eats ESC; always story-continue after world-load before ESC protocols); (b) diagnostic-first pays: the DIAG lines turned "invisible sling" from a mystery into four named piles in one relaunch.
+
+## ✅ WEAPON CHAIN CLOSED + SCHEDULE VERIFIED (2026-07-11 ~20:05, Claude Code)
+
+**Weapon chain ✅ FULLY VALIDATED, machine + eyes:** telemetry `equip: no hunter needs a weapon` / `weapons: (hunters armed)` / alerts clean ("Colony infrastructure is adequate"); ON SCREEN: Alric status "Hunting" (armed and doing the job the weapon exists for), Giles "Equipping it…", Linyeve "Crafting wo…" (third sling). The alert that presided over two colony wipes is gone because the colony REACTED to it end-to-end: detect → build station (build-pressure prio boost) → queue (target=need) → craft → classify (quality-prefix + EquipmentBlueprint + WeaponTypeSettings.AttackType) → equip orders → armed hunters. Round-trip idempotency: equipment is game-native state (persists in save); next reload is the free check.
+
+**Schedule audit PASS (exhaustion alert was transient, not structural):** SCHEDULE tab grid eyeballed — three chronotype-shifted rows exactly as ScheduleRouter wrote them (7h Sleep purple blocks, Work green, Leisure yellow). ChangeSchedule write path visually verified for the first time. #20 v2 (chronotypes from personality) stays queued but the substrate is proven. HOW_THINGS_WORK.md §8 updated + synced to StarForge vault.
+
+**Recurring friction logged:** the story-recap screen intercepts EVERY resume and eats ESC/tab clicks silently (3 misfires today — two failed saves, one lost SCHEDULE read). Durable fix queued: resume scripts must VERIFY the recap is dismissed (screenshot or telemetry-plus-input probe), not fire-and-forget the continue click.
+
+## ✅ SAVEGUARD (programmatic save) + weapon-chain ROUND-TRIP (2026-07-11 ~20:35, Claude Code)
+
+**SaveGuard ✅ VALIDATED LIVE**: write `validation/save_request.txt` → mod consumes it on the next main-thread tick → `GlobalSaveController.AutosaveCurrentVillage()` → `Autosave-11.sav` written by the game''s own managed path (20:32:15; flag deleted; [SaveGuard] log line). **The UI-click save protocol is RETIRED** — it misfired 5× today (recap screen eats ESC, open panels eat ESC, stray clicks select entities — "Olgita" incident). NEW DEPLOY PROTOCOL: write flag → wait for VillageSaves\<colony> folder mtime to advance → kill → deploy → launch → RESUME → verify census pop>0 → story-continue click → verify recap DISMISSED.
+**Weapon-chain reload idempotency ✅**: full save→kill→reload cycle — `equip: no hunter needs a weapon` / `weapons: (hunters armed)` persisted. The chain is now ✅ on every gate: machine state, eyes-on-screen (Alric Hunting), negative path (honest refusals en route), round-trip.
+**Game-truth banked (HOW_THINGS_WORK §11)**: `QuicksaveCurrentVillage()` is an EMPTY STUB in the shipped assembly (invoking it = silent no-op — the "invoked ≠ applied" trap in its purest form); `AutosaveCurrentVillage()` is the full managed path (water-thread wait, autosave_N rotation, village name preserved → sidecar-safe); `SaveCurrentVillage(filename)` for named saves.
+**Minor open item**: telemetry `save:` line reads "(idle)" even after a confirmed fire (log line + file artifacts exist) — display path discrepancy, does not affect function; diagnose at next code touch.
+
+## CAMPAIGN SCORECARD — doc-by-doc grade vs the AI Influence success gate (2026-07-11 ~20:45, Claude Code; regrade after every major slice)
+
+Gate: all five doc-11 scenarios reproducible live. Grades: ✅ doc scope demonstrated · ◐ partial (missing pieces named) · ☐ not started.
+
+- **00 Overview** ◐ — Player2 + OpenRouter live w/ per-task routing + budget lanes (proven under load). Missing: DeepSeek/Ollama/KoboldCpp backends, TTS (#28).
+- **01 AI Dialogues** ◐ — real-time generated dialogue, personas, trust-gated context, NPC-to-NPC, memory recall across restarts all live. Missing: lie-catching (P2 slice 2a), conflict→combat escalation, barter-through-dialogue resolution, TTS/accents.
+- **02 Dynamic World Events** ◐ — the ENGINE side is done+validated (read/classify/decide/answer the game''s events as the player: Lee refusal end-to-end; answerability gate; honest telemetry). Missing: AI-GENERATED events + rumor propagation NPC-to-NPC by standing/location (P5 backend exists in schema only) + event evolution.
+- **03 AI Diplomacy** ☐ — needs the faction-layer design first (biggest open design question; GM has raid factions + traders natively, no persistent polities — the layer must be largely synthetic, anchored to raid/trader/visitor factions).
+- **04 Disease & Plague** ☐ — P9 state machine spec''d only.
+- **05 NPC Memory** ✅(core)/◐(release) — per-NPC history, relationships, RoleRAG retrieval, typed memories, death-of-companion memories all live+validated. Release blocker: #33 mod-local JSON migration (dashboard-independence).
+- **06 Romance & Marriage** ☐ — relationship substrate (romance_states) exists server-side; courtship/intimacy/decay/lineages not started. Ken addition: birth system (children take father''s surname).
+- **07 Settlement Combat** ☐ — RaidStarted/RaidEnded delegates ground-truthed; no direction layer. Prereq now MET: settlers can actually be armed (weapon chain ✅).
+- **08 Death History** ◐ — DeathChronicler deployed (roster-diff detection, real-memory chronicles, survivor memories, budget-deferred retry). Missing: a live death to validate against (no deaths yet in Dowsby — good problem), 50+ interaction gate, decline option.
+- **09 AI Actions** ◐ — NL order parser → bounded plans → OrderExecutor proven live (job priorities, construction). Missing: true pathing (move_to/patrol/attack are approximations), multi-step persistence through reload validation, dialogue→order bridge. The full doc needs #17 Planner.
+- **10 Additional Systems** ◐ — situational awareness partially (colony reality in every LLM prompt), recruitment detection implicitly (Lee decision weighed colony state). Missing: entity/standing tables (P4), visit history, mention extraction, economic ripples.
+- **11 Gameplay Examples** ☐ as acceptance suite — none of the 5 scenarios formally demonstrated end-to-end yet; scenario 1 (rumor+war) needs P5+P6, scenario 2 (plague) needs P9, scenario 3 (siege) needs P10, scenario 4 (courtship+betrayal) needs P7+lie-detection, scenario 5 (tribute+warband) needs P6+P3-pathing. **Nearest reachable: none without at least one of P5/P6/P7/P9/P10 — which is why #17 Planner (the enabler for coherent multi-step behavior) and the faction layer (unlocks 03/parts of 11) are the next majors.**
+
+**Campaign read: survival floor + event-agency + memory are SOLID; the frontier is now the WORLD layer (factions/events-generation) and the PLANNER. Next major opened this session: #17.**
+
+## SPEC — #17 THE PLANNER, slice 1 (planned 2026-07-11 ~20:55, Claude Code; implementing now)
+
+**Vision (Ken):** the engine asks the LLM WHERE/WHAT/WHY/WHEN/HOW for immediate + long-term planning; deterministic validator/executor consumes a plan queue. Server side (gm_plans: tiers immediate/seasonal, WHAT/WHERE/WHY/HOW steps, laws, selftests) ALREADY LIVE — this slice builds the MOD side.
+
+**Slice 1 scope (bounded):**
+- New `src/PlanManager.cs`: once per session (+ on crisis entry, + when all steps terminal) gather colony reality (census/alerts/food/weapons/season snapshot — same strings the telemetry uses) → LLM call task="planner" (CRITICAL LANE, budget-gated, async→main-thread apply like HouseSitePlanner) → JSON contract `{rationale, steps:[{what, verb, args, why}]}` with a CONSTRAINED 3-VERB MENU mapped to proven actuators:
+  - `produce(table_id, product_id)` → ProductionPlanner.Tick(table, product)
+  - `build(blueprint_id)` → StockpilePlacer.TryPlaceBuildingNear (census + SkillBlocked guards)
+  - `focus_job(job_name, settler_name?)` → ChangeJobPriority prio 1 via GameBridge (full-name JobType)
+- Steps with unknown verbs/args → status "rejected" (kept in the plan — honest audit). Valid steps execute ONE per ~2 ticks; per-step status pushed to `/api/plan/step_status`; the whole plan POSTed to `/api/plan` (save_id = colony name) via MemoryManager''s PostJson pattern.
+- Telemetry line `plan:` — `[done/total] active=''<what>'' (<verb>) | rationale…` — and honest failure states (LLM budget-deferred → "no plan (budget)"; parse fail → "no plan (unparseable)" + raw logged).
+- The deterministic survival floor (ColonyBuilder priority chain, crisis reactor) REMAINS THE FLOOR — plan steps execute in the module region after it and can never override crisis routing.
+**Deferred to slice 2+:** plan RESUME from dashboard on reload; seasonal tier; event-driven replan richness (season change, event aftermath); wider verb menu (farm, zones, home move, storage); laws consumption.
+**Validation plan:** telemetry line shows plan + step progression; dashboard `GET /api/plan` returns it; a step visibly executes (production order queued / blueprint placed) + step flips done; negative path: a bogus-verb step lands rejected without side effects; budget line shows the planner spend in the critical lane; save→reload → new session generates a fresh plan (no duplicate execution of old steps since verbs are census-guarded/idempotent).
+
+## INCIDENT + FIX — planner retry-loop burned 4 critical calls; max_tokens root cause (2026-07-11 ~21:10, Claude Code)
+
+**What happened (first live PlanManager run):** 4 planner calls spent in ~2 min (budget 8/8 exhausted, planner itself then critical-suppressed; #35''s lanes worked exactly as designed — chatter squeezed first, cap stopped the bleed). No plan ever adopted, zero diagnostic lines.
+**Root cause chain [REPRODUCED from code]:** `LLMClient.GetRawResponseAsync` hard-coded `max_tokens=256` — fine for every prior task (one-line decisions), but a 3-5 step JSON plan TRUNCATES mid-document → `JObject.Parse` throws → PlanManager''s catch set LastResult without logging → steps stayed empty → the want-plan trigger refired next tick → burn loop. Silent failure + eager retry = self-starvation of the very lane built to protect critical calls.
+**Fixes deployed (mod_2026071_211x build):** (1) `GetRawResponseAsync(..., maxTokens=256)` parameter — planner passes 1024; (2) HARD 5-min attempt cooldown in PlanManager (a failed generation can never loop); (3) every failure path logs (`generation returned empty`, `generation EXC`, `adopt EXC + raw head`); (4) prompt distilled to strategy-relevant telemetry lines (worldmap line dropped).
+**Budget-governor caveat noted:** the sliding window lives in process memory — kill/relaunch RESETS the 8/hr budget. Fine for dev cadence; a persisted window is a prod-hardening item.
+**Lesson (goal clause vindicated + sharpened):** "spend LLM calls where judgment lives" also means every judgment-spender must be LOOP-SAFE: cooldown on failure + logged outcome are now the required pattern for any module that can request a critical-lane call (EventInteractor already complies via _seen/Failed; HouseSitePlanner fires once/session; DeathChronicler retries are budget-deferred by design — audit它 for a cap at next touch).
+
+## ✅ MILESTONE — #17 THE PLANNER slice 1 VALIDATED LIVE on every gate (2026-07-11 ~21:15, Claude Code)
+
+**Dowsby''s first LLM-authored plan executed end-to-end:** `plan#764509 [3✓/1✗/4] complete — "Secure food, improve comfort, and lay groundwork for growth."`
+- step 0 `produce(camp_fire, meal)` → done (idempotent vs existing order) · step 1 `build(hay_sleeping_spot)` → done, blueprint committed (117,5,135), VISIBLE ON SCREEN by the house wall · step 2 `focus_job(Hunting)` → done (prio 1 × 3 settlers) · step 3 `build(storage_shed)` → **failed HONESTLY** (LLM invented the id; executor rejected with a diagnostic listing real ids; zero side effects) — the negative path proven live in the same run.
+- Gates: telemetry line w/ live progression ✓ · dashboard persistence ✓ (plan_id 20, WHAT/WHY/HOW per step) · player-visible artifact ✓ (screenshot) · negative path ✓ · budget: ONE critical call (cooldown + 1024-token fix working) ✓. Coherence: the strategy matches the live alerts (food low → meals+hunting; settlers annoyed → comfort) — a player-sensible plan.
+**Slice 2 queue:** feed the prompt a curated buildable-id menu (stop invented ids); wire ServerStepId for step-status pushes + plan RESUME on reload; seasonal tier; wider verbs (farm/zones/storage/home). 
+**Doc scorecard delta:** 09 AI Actions ◐→ stronger (multi-step ops real); 00 core loop materially advanced; the #17 enabler for docs 02/03/11 is now a working substrate.
+**Commit point:** `feat(planner): LLM colony strategist v1 — plan/verb-menu/executor/persistence + SaveGuard + weapon-chain closure`
+
+## ✅ MILESTONE — FIRST RECRUITMENT DECISION: Jeffrey welcomed; CloseSilent live-proven (2026-07-11 ~21:40, Claude Code)
+
+**`game_event_new_worker_hungry`**: starving stranger at the gate → leader decided WELCOME — "Welcoming him adds labor potential despite short-term food strain, supporting long-term growth" → `OnClose(0)` applied → **`dialog view closed (CloseSilent)` — the #34 window-teardown ◐ is now ✅ (first live exercise)**. Judgment contrast validated: Lee (necromancer rumors, unarmed colony) REFUSED at 18:56; Jeffrey (armed colony, food recovering) WELCOMED at 21:40 — contextual decisions, not a fixed policy. The concurrent replan even anticipates the recruit ("expand workforce capacity", extra bed as active step). Doc 02 read/decide/apply is now ✅ on all paths incl. teardown; watching pop 3→4 for the physical join.
+**Also this cycle:** budget-deferred event retry deployed (sticky-Failed removed; the 21:31 missed-recruitment class of failure can''t recur — deferred events show `deferred (budget) — retry HH:MM` and re-attempt when the window rolls). Note honestly: the retry path itself wasn''t exercised live (the relaunch reset the budget window and the decision went through immediately); it validates at the next genuine budget exhaustion.
+**OPERATOR FEEDBACK APPLIED (Ken: "timing queues not firing, you sat for half an hour")**: root cause = the game PAUSES when backgrounded, so long soaks guarded a stopped clock. Fixes: (a) persistent telemetry-staleness Monitor (alerts within ~30s of a pause → immediate refocus); (b) soak cadence tightened while decisions/events are pending. Soak time must be LIVE colony time or it''s waste.
+
+## ✅ JEFFREY JOINED — recruitment full-circle; pop 3→4 (2026-07-11 ~21:50, Claude Code)
+
+Census `pop=4`, deaths line `watching 4 settlers` — the welcomed recruit is physically in the roster. The complete chain, all mod-driven: event detected → answerability gate → critical-lane LLM decision grounded in colony state → `ShowDialogPhaseBranching.OnClose(0)` → `CloseSilent` teardown → event lifecycle completed → settler ARRIVED. First population growth authored by the AI leader. (Arrival lag note: the join materialized on the post-deploy reload — GM arrivals appear to finalize on a walk-in/loading boundary; watch the pattern next recruitment.)
+**#17 slice 2 deployed + live**: curated buildable-id menu in the prompt, census guard on singleton stations (no duplicate research tables), first plan under the new prompt executing (`plan#683873 [3✓/0✗/5]`). ServerStepId wiring + plan resume remain queued for slice 3.
+**Commit point:** `feat(colony-ai): planner v1+v2 slices, recruitment decisions live, SaveGuard, liveness watchdog, event retry`
+
+## SOAK #6 ACTIONS — elastic wood radius, chatter throttle, Jeffrey integration verified (2026-07-11 ~22:45, Claude Code)
+
+**Jeffrey fully integrated** (jobs line routes 4 — Medicine lvl12; schedule applied ×4; build-pressure picked HIM for construction, 3 pending). **Findings + fixes this pass:**
+1. **Blueprints blocked NO-RESOURCES with wood designation at 0** (7 scanned, all spent — local depletion, 2% forest map). FIX DEPLOYED: elastic radius in the no-resources reaction — near pass (16) first, and when it designates ZERO, wide sweep (40). Needs beat leash, the resource-chain version.
+2. **Chatter saturation**: suppressed=185/window with pop=4 (pair growth), crit 2 deferred (the budget-deferred event retry now exercising for real). FIX: `NpcToNpcConversationMinutes` 15→45 in the BepInEx config (loads this boot). #23 batching remains the durable fix.
+3. Jeffrey needs a ranged weapon (alert/equip-line within-tick ordering race visible) — WeaponChain''s need-based target should queue sling #4; watching.
+
+## SOAK #6 CLOSE — colony at peak health; stale-read protocol fix (2026-07-11 ~23:00, Claude Code)
+
+**State: pop 4 (Jeffrey armed with a spare sling — alert cleared), beds 5, house done, no pending blueprints, budget healthy (suppressed 185→10 under the 45-min chatter interval), plans cycling.** Elastic wood radius deployed, honestly ◐ (no NO-RESOURCES blockage live to exercise it — validates on next natural trigger).
+**Incident this pass:** post-deploy world "unload" was a FALSE ALARM chain: the resume script''s world-load gate matched `pop=4` on a STALE pre-kill telemetry file, clicked through prematurely, and this boot the sim genuinely did not start until the recap was dismissed (memory pressure: game logged a 670MB spike with <1GB free RAM — Ken''s machine is RAM-tight with the game+dashboards up). Recovery: dismiss recap → world live, zero loss. **PROTOCOL RULE (stale-read family, 3rd occurrence): any gate reading a game-written file must check FRESHNESS (mtime <15s) before trusting content — save gate ✓ (timestamp), world-load gate now ✓ (freshness+pop, re-verify after continue-click).**
+**Session AAR (this stretch):** sustain — watchdog liveness loop (pause→refocus in <60s, Ken''s feedback applied and observable); diagnostic-first debugging (every mystery this session fell to one targeted log/decompile). improve — stale-file reads keep recurring in fresh scripts: the freshness check is now MANDATORY in the protocol, not a per-script memory. tools — the API index paid for itself within the hour of existing; HOW_THINGS_WORK is the compounding asset.
+
+## SPEC — P5 slice 1: "lived events reach conversations" (planned 2026-07-11 ~23:10, Claude Code; implementing now)
+
+**RECONCILE result (scorecard undergraded P5):** gm_systems.py ALREADY ships world_events + world_event_knowledge tables, propagate_event, per-settler known_events, /api/events/{create,propagate,known,update} endpoints, diplomacy hooks. MISSING: (a) LAST MILE — build_dialogue_prompt_context never includes known_events, so propagated knowledge never reaches an NPC prompt; (b) FIRST MILE — nothing writes LIVED game events (Lee refused, Jeffrey welcomed, polecat raid) into world_events; (c) generation + organic rumor spread (slices 2-3).
+**Slice 1 scope:** (1) server: append "WORLD EVENTS THIS SETTLER KNOWS" section to build_dialogue_prompt_context from known_events(); (2) mod: EventInteractor posts every DETECTED event (and its decision+reason when answered) to /api/events/create + /api/events/propagate to all live settlers (rumor_state=knows — they lived it; fire-and-forget HTTP like PlanManager); (3) validate: GET /api/events shows the rows; /api/events/known per settler; the composed prompt (dashboard prompt trace) carries the section; NEGATIVE: settler with no knowledge gets no section; then EYES: a settler mentions the event in dialogue.
+**Doc-02 bullets advanced:** "NPCs learn about events organically and bring them up in conversation" (lived-event grade), "events feed into memory/dialogue". Generation ("AI spins up original events") = slice 2; standing/location-based spread = slice 3.
+
+## ✅ MILESTONE — DOWSBY SURVIVES ITS FIRST RAID; P5 world events LIVE; multi-dialog fix (2026-07-11 ~23:45, Claude Code)
+
+**THE RAID (Ravagers, cannibals, Summer 1353, 4h28m):** aftermath verdict "DEFEAT" on points — 5 buildings burned (hay bed, fletcher, research table, campfire, door), food stores stolen — **but ALL FOUR SETTLERS SURVIVED** (Linyeve took the worst defending Dowsby). The two-wipe survival lessons held: armed settlers, roofed shelter, honest state. **The autonomous floor REBUILT DURING/AFTER the battle unprompted** — cookfire + beds re-placed mid-raid, fletcher blueprint re-committed at (114,5,133) the very next tick after the aftermath (census-driven priorities as designed). Contrast with Cockhamsted/Llangefni: same class of threat, zero deaths, self-repair.
+**P5 slice 1 LIVE under fire:** the raid was recorded + propagated as world events #1/#2 within seconds of detection — all four settlers now KNOW the raid as lore for dialogue (prompt section "WORLD EVENTS YOU KNOW OF" shipped server-side; first conversation validates the last mile visually). Doc 02: "NPCs learn about events organically and discuss them" — lived-event grade now ◐→ awaiting the dialogue eyes-on.
+**Defect found + fixed same hour (multi-dialog events):** the raid''s AFTERMATH dialog is a SECOND dialog on the same event instance; decisions were keyed per-instance so it zombied (acked manually once). Fix deployed: phase-identity tracking (`AppliedPhase`) — a new answerable phase after an apply re-reads content, re-arms the decision machinery, and reports the fresh content (aftermaths become lore). ◐ validates on the next multi-dialog event.
+**Doc scorecard deltas:** 02 core loop now includes lived-event lore ◐; 07 combat prerequisite (armed colony surviving raids) demonstrated; scenario-3 substrate (raid → aftermath → rebuild) observed end-to-end unattended.
+**Commit point:** `feat(world): P5 lived-event lore pipeline, raid survival, multi-dialog events, planner slice 2`
+
+## COHERENCE CATCH (Ken, eyes-on) — furniture in fields; placement guards deployed (2026-07-12 ~00:10, Claude Code)
+
+**Ken spotted what every machine check missed: a bed and a door standing alone outside, connected to nothing.** Mechanism: (a) ColonyBuilder Priority-3 beds had a pre-house-era OUTDOOR FALLBACK (TryPlaceBuildingNear) when interior cells ran out — pop 4 + a small shack = lawn bed; (b) the planner''s build verb offered wood_door/hay_sleeping_spot with the same generic spiral. **Fixes deployed:** outdoor bed fallback REMOVED (interior full → honest "house extension needed (#31)" report — the shortage now feeds the Packer need instead of littering the map); planner menu stripped to stations only (camp_fire/research/fletcher); housing-managed ids (beds/doors/walls/roofs) hard-rejected by the executor with a named reason.
+**Open (next slice, live targets):** orphan CLEANUP — the existing field-bed and field-door need cancel (if blueprint) or deconstruct (if built); #32''s orphan slice now has real targets. Door origin still [HYPOTHESIS] (HouseBuilder re-adoption anchor vs earlier session debris) — inventory sweep will settle it.
+**Process note (Ken: "are you constantly watching?"):** state is watched continuously (telemetry + liveness watchdog); VISUALS are sampled — which is why the operator caught this first. Mitigation: every soak check now includes a settlement screenshot graded as a player (was already mandated; the miss was between checks). The browser viewer shows only the last captured frame — it is not a live stream.
+**#31 PACKER promoted:** pop 4 + interior full + "extension needed" = the multi-room floor plan is now a live blocker, not a future nicety. It jumps the queue after the orphan cleanup.
+
+## #31 PACKER — PRIMARY LINE (Ken 2026-07-12 ~00:20: "sick of the same shitty house"; promoted over all feature passes)
+
+**Blocker analysis (honest):** the identical house was HARDCODED (HouseBuilder = one fixed 4x7 two-room template). The hard game-API problems (exact-cell commits, roof rules, doors, enclosure, site scoring) are ALL solved and proven — the missing piece was only ever the LAYOUT GENERATOR. It kept slipping because validation-friendly slices kept winning over the gated keystone (the task-selection bias Ken''s rules name). Corrected.
+**Slice A prototype DONE (offline, ASCII-validated — validation/packer_designs.txt):** corridor-spine generator; pop 5+ = LONGHOUSE pattern (2-wide hall-spine with hearth, rooms off it); pop<=4 = hall-room variant. Rooms by function: dorm/bedrooms (bed cells), INDOOR PANTRY (goods out of the rain), workshop, hall. Seeded variety (order/sizes/door end differ per colony). Fits the 12x12 site pad through pop 6; pop 8 = 14x12 (slice C: second building). Defects caught IN PROTOTYPE (sealed doorless chamber, double walls, pad overflow) — zero deploy cycles burned on geometry.
+**Next: C# port** — HousePlanner2 emits HouseBuilder''s proven plan format; Step generalized (N doors, corridor floors, hearth cell, pantry stockpile zone, dorm-cell beds); BuiltState persists {seed,pop} for re-adoption. Then live on Dowsby (pop 5 → the longhouse above).
+
+## SPEC — #31 Slice B: THE ARCHITECT — LLM-designed housing from villager/village context (Ken 2026-07-12 ~00:45; implementing now)
+
+**Ken''s directive:** feed villager + village context to the LLM; ask it WHAT to build (how many rooms, floor space, floors, common house vs INDIVIDUAL houses per NPC needs — "whatever novel questions facilitate a house"); the engine turns answers into floor plans the settlers digest and produce.
+**Architecture:** new `HouseArchitect` module —
+1. CONTEXT: roster (name, top skills, passion, role) + colony state (pop, season, food, raid history, existing buildings) — compact, from live census + JobRouter data.
+2. LLM QUESTIONNAIRE (task "architect", critical lane, 1024 tokens, cooldown-guarded like PlanManager): JSON contract `{strategy: common_house|individual_houses, rationale, buildings:[{for: all|<name>, rooms:[{purpose: dorm|bedroom|pantry|workshop|hall, width_hint}], style_notes}]}`.
+3. DETERMINISTIC VALIDATION: purposes clamped to the known set; widths clamped to size table; floors clamped to 1 (stairs are an unbuilt primitive — honest note when the LLM asks for more); pad-fit enforced by the existing shrink loop.
+4. GENERATOR: LayoutV2 generalized to consume a ROOM PROGRAM (LLM''s rooms) instead of the hardcoded rooms_needed; corridor-spine packing unchanged (it is the proven buildable geometry).
+5. MULTI-BUILDING (individual houses): persisted BUILDING QUEUE in BuiltState (program + index); HouseBuilder builds queue entries SEQUENTIALLY (complete one → plan next). Beds for a personal house tag to that settler''s building.
+6. FALLBACK (survival floor): LLM unavailable/unparseable → the deterministic longhouse (deployed tonight) — the colony always houses itself.
+**Validation plan:** architect call visible (budget critical lane, 1 call, cooldown); program logged + persisted; generated plan matches program (room summary telemetry); settlers BUILD it (eyes-on); reload re-adopts mid-queue; negative paths: bogus purpose → clamped+logged, LLM silent → longhouse fallback, floors>1 → clamped with note. Ken (experience gate) judges the built result on screen.
+
+## #31 SLICE B IMPLEMENTED — THE ARCHITECT deployed (2026-07-12 ~01:05, Claude Code)
+
+**The full chain Ken specified, deployed:** pop≥5 + shack complete → `HouseArchitect` feeds villager context (roster, per-settler best skill from JobRouter) + village context (alerts/state) to the LLM (task "architect", CRITICAL lane, 1024 tokens, hard 10-min cooldown — loop-safe per the PlanManager lesson) → JSON design questionnaire: **strategy (common_house | individual_houses), buildings[], rooms[{purpose,width}] per building** → deterministic validation clamps purposes/widths/floors → `BuiltState.VillageQueue` persists the whole design → buildings built ONE AT A TIME: each queue entry becomes `HouseProgram` → `LayoutV2` packs THE LLM''S rooms (corridor-spine stays the buildable geometry) → settlers construct via the proven primitives → on completion the queue ADVANCES to the next building. Reload-safe end to end (program + queue + index persisted; adoption regenerates identical layouts).
+**Fallback (survival floor):** 2 failed consults → the deterministic longhouse. The colony always houses itself.
+**Telemetry:** new `architect:` line; house line carries the room summary. Validation in flight: consult → design adopted → building 1 planned; then EYES-ON as it rises (Ken = experience gate on the built village).
+**Commit point:** `feat(architect): LLM-designed village housing — questionnaire → room programs → packer → sequential building queue`
+
+## VILLAGE PLAZA SYSTEM built; crisis live-managed; season-recap freezer identified (2026-07-12 ~01:20, Claude Code)
+
+**VillageLayout (Ken''s plaza rule) IMPLEMENTED+COMPILED (deploy holds until crisis exit):** village center fixed ONCE per save at the leader''s sited plot → 7x7 plaza (hearth = social heart) → 8 building slots ringing it (N/E/S/W then corners), architect queue fills slots in order, **exterior doors face the square** (LayoutV2 door now plaza-facing, was random-end), spiral placement demoted to fallback. Persisted (village.cx/cy/cz). The need was proven the same hour: two competing centers emerged (longhouse @113,147 vs Molle''s farm plot @90,150).
+**Director gap fixed:** architect consult now ALSO fires when a v2 building completes with an empty queue (the deterministic longhouse pre-empted the first consult).
+**⚠CRISIS(food) — #37 positive path LIVE and working:** nutrition 15/30 after the raid theft + pop growth; response observed: hunt/forage counts climbing per tick, planner plan "stop starvation" executing (focus_job Harvesting), leader site choice food-aware ("fertile soil… immediate food production" — Molle Cox, the 5th settler). No deploys during crisis.
+**NEW FREEZER IDENTIFIED [REPRODUCED]:** the story-recap screen re-appears at SEASON CHANGES (not just loads) and pauses GAME TIME — the mod (game-time ticked) freezes with it; only external input unfreezes. Tonight''s recurring "recap intercepts" explained. Owner assigned: watchdog+refocus operationally; durable fix queued = real-time-driven auto-dismisser (ground-truth the recap UI type from the API index).
+
+## ✅ #37 CRISIS REACTOR — POSITIVE PATH VALIDATED LIVE (2026-07-12 ~01:35, Claude Code)
+
+**Full cycle observed on a REAL starvation threat** (post-raid theft + pop 5): entry (census ⚠CRISIS(food) at nutrition 15<30) → response (caps lifted, all-hands food routing, armed hunters hunting — Giles leveled Marksman 11 from live hunting, planner plan "stop starvation" executing, leader''s site choice food-aware) → **11 minutes of knife-edge trend (15→0→12→0 — consuming as fast as gathering) → recovery → CRISIS LIFTED**, colony EXPANDED during it (5th stockpile, 2nd cookfire). Zero deaths. Contrast: Llangefni starved to extinction next to the same alert with no reactor. #37 core ✅ (remaining slices — roofed pantry stockpiles — now belong to the plaza/architect housing line).
+**Post-crisis save banked; VillageLayout/plaza build DEPLOYED; longhouse construction resuming (floors 1/66 when frozen).** Next milestones: longhouse completes → architect consults Ken''s live LLM → village proposal rendered for the operator.
+
+## DOWSBY HAS FALLEN — winter famine; succession seamless; the freeze class gets terminated (2026-07-12 ~02:00, Claude Code)
+
+**The fall:** post-raid theft + winter + pop churn → famine. Giles Becker starved first — **#27 DeathChronicler''s first live validation: an 897-char chronicle grounded entirely in his REAL recorded life** (guard duty, tailoring promises to Linyeve from actual dialogue, his last logged actions, honest cause: "when the night fell cold and the hearth was empty"). The remaining four fell during FROZEN GAME TIME (story-recap freezes stole hunting hours at the margin — the mod ticks on game time and could never dismiss the screen that froze it). Game rolled successor colony **DOLGELLAU** (A New Life flow, same map, 4 settlers) — the mod adopted it seamlessly and was placing longhouse floors within minutes (the first colony BORN onto the complete stack).
+**Dowsby''s legacy vs the previous wipes:** it died WITH story (chronicle, raid survival, two recruitment decisions, world-event lore) and its ruins/stores seed Dolgellau. The mod''s colony-lifecycle loop (die → chronicle → succeed → rebuild) is itself now a validated behavior.
+**FIXES DEPLOYED (the freeze class, terminated):** (1) `RecapDismisser` on Plugin.Update (REAL time): ground-truthed `LoadingScreenFake.OnContinueClick()` invoked after a 4s human-readable linger whenever the continue button is active; (2) **`Application.runInBackground` forced TRUE** (the game has the setting natively — LoadingScreenFake:100) — an unfocused window can never pause a colony again; (3) director gate pop≥5→pop≥3 (the magic number blocked the architect for 4-settler Dolgellau).
+**Gap logged (#36, 3rd data point):** wipe-time deaths go unchronicled (a dead colony has no next tick). Candidate fix: hook WorkerController.WorkerDiedEvent (field enumerated in GameBridge logs) for real-time death capture instead of roster-diff-only.
+
+## ✅ FREEZE CLASS TERMINATED — RecapDismisser + runInBackground validated live (2026-07-12 ~02:10, Claude Code)
+
+**Proof:** `recap auto-dismissed 02:06:44 — game time resumes` — the load-recap cleared by the MOD''s own hand (LoadingScreenFake.OnContinueClick via real-time Plugin.Update, 4s human-readable linger), zero external clicks. `Application.runInBackground` forced TRUE from frame one (native setting, found at LoadingScreenFake:100 via the API index). Closed: backgrounded-pause, load-recap freeze, season-recap freeze — the class that stole Dowsby''s hunting hours. The liveness watchdog stays armed as the NEGATIVE check (its silence is now the ongoing proof). Resume protocol hardened: retry-RESUME-until-live (menu timing varies with memory pressure — try 2 landed tonight).
+**Dolgellau live on the full stack:** pop 4, adopting Dowsby''s ruins/stores, longhouse plan resuming. Architect gate now pop≥3. HOW_THINGS_WORK §12 updated (runInBackground + LoadingScreenFake) + vault sync next touch.
+**Commit point:** `feat(liveness): recap auto-dismiss + run-in-background — colonies never freeze unattended`
+
+## CRASH + TWO FIXES — game process died; batch placement + water gate deployed (2026-07-12 ~02:50, Claude Code)
+
+**Dolgellau BUILT THE FIRST LONGHOUSE** (roofed, massive — seen on screen before the crash) and kept recruiting unattended (roster: Etheldreda, Herebryht, Margaria, Osric, Meeka). Then the game process HUNG (Not Responding, CPU spinning) and DIED — memory exhaustion suspected (machine ran <1GB free all night). Progress since the ~02:14 save lost; reload re-adopts the plan and the NEW batch placement rebuilds the delta fast.
+**Coherence catch (eyes-on before the crash):** the longhouse dorm beds read "cannot be used… (In Water)" — the site scan allowed MARSH/shallow-water cells. **Buildable ≠ habitable.** FIX DEPLOYED: `StockpilePlacer.CellIsDry` (MapNode.IsWater/HasWaterTag + the ground below, via the API index) gates BOTH the footprint spiral and the plaza slots. The standing longhouse keeps its marsh site (world truth); the architect''s next buildings land dry.
+**S1a BATCH PLACEMENT deployed:** whole phases per pass (cap 24/tick) — buildings place in seconds, settlers construct in parallel natively. First live exercise = this reload''s delta rebuild.
+**Also queued from the crash:** EventInteractor real-time sibling (blocking event dialogs pause game time — same deadlock shape as the recap; the dismisser pattern applies) — next slice after the cycle validates.
+
+## HOST INCIDENT — game cannot load ANY save; colony PARKED safely (2026-07-12 ~03:55, Claude Code)
+
+**Five consecutive hangs** (in-world ×1, at-load ×4) across TWO different saves, cool-downs of 90s and ~30min, free RAM 1.5-3.8GB — the save-corruption theory is DEAD (Autosave-8 exonerated + restored); this is HOST/GAME-INSTALL level (candidates: GPU/driver state after ~25 boot cycles tonight, shader cache, OS-level exhaustion). **Colony state SAFE**: Dolgellau saves intact through Autosave-8 (02:47) — pop 4, first longhouse ~80% (roofs 11/64 at last verified state), full stack deployed incl. periodic auto-bank (unexercised), batch placement, water gate, RecapDismisser, runInBackground.
+**Parked**: game down deliberately; retry scheduled; Ken notified (push) — a HOST REBOOT is the recommended fix. On next successful boot the self-driving loop resumes: retry-RESUME → recap self-clear → re-adopt → batch-rebuild → roofs → architect consult → **Ken''s village proposal** (the standing deliverable, one working boot away).
+
+## PARK-WINDOW WORK — event real-time pump deployed to disk (2026-07-12 ~04:10, Claude Code)
+
+`EventInteractor.RealTimePump()` on Plugin.Update (5s throttle): blocking event dialogs pause GAME time and the interactor rode game time — the recap deadlock''s sibling, now closed the same way. Per-event guards (DecisionRequested/Applied/RetryAfter/_seen) make double-driving idempotent. Deployed to the plugins dir while the game is parked — rides the next successful boot. ◐ validates on the first blocking dialog thereafter. With this, ALL known freeze classes have real-time owners: recap (dismisser), focus-loss (runInBackground), blocking dialogs (pump).
+
+## SPEC — #23 dialogue batching (grounded 2026-07-12 ~04:15; build at next validatable window)
+
+**RECONCILE (the real cost driver):** NPCToNPCDialogueManager makes ONE LLM CALL PER LINE (`GenerateDialogueAsync` inside `ContinueConversationAsync`, new line every 2-4s) — a single 4-6 line chat costs 4-6 calls; pop growth multiplies pairs. THIS is suppressed=185, not conversation starts (those are interval-gated, now 45 min).
+**Design:** one call per CONVERSATION: prompt requests the full exchange as JSON `{lines:[{speaker, text, claims?, trust_delta?}], summary}` (6-8 lines max, both voices, personas+context for BOTH speakers in one prompt, maxTokens 1024). The manager then PLAYS the lines on the existing 2-4s cadence (chat bubbles per line — identical player experience), records each line through the existing per-exchange pipeline (claims/trust/memory), and posts the summary once. Fallback: unparseable → current per-line path for that conversation only. Cost: ~5x fewer dialogue-lane calls; at pop 10+ this is the difference between a working budget and starvation.
+**Validation plan:** two settlers converse on screen (bubbles alternate at the normal cadence); mod log shows ONE spend for the whole exchange; claims/memories recorded per line (dashboard); budget line shows dialogue-lane pressure collapse; negative: malformed JSON → per-line fallback logged.
+
+## ATTEMPT 6 — soft-hang variant; park holds pending host reboot (2026-07-12 ~04:35, Claude Code)
+
+New data point: attempt 6 got the FURTHEST — save loaded to "Loading Complete" with the recap showing (Dolgellau''s founding lore visible: Herebryht''s "cosy welcoming hearth" speech, Godwyn the starving arrival) — then the final transition never fired: process RESPONSIVE, screen inert, continue affordance never activated (dismisser correctly saw no active continueButton — not its miss), manual clicks ignored. Diagnosis unchanged and sharpened: host/install-level degradation (8 days uptime, ~25 boot cycles tonight); the load pipeline dies at different depths per attempt. PARKED; hourly retry stands; Ken pushed (reboot recommended). Everything deployable is deployed to disk and rides the next good boot: real-time event pump, periodic auto-bank, batch placement, water gate, dismisser, runInBackground. The village-proposal RENDERER is built and mock-tested — the consult''s design feeds it verbatim.
+
+## PARK-WINDOW VERIFICATION — server-side green; canon current (2026-07-12 ~04:45, Claude Code)
+
+gm_plans selftest: **5/5 PASS** (submit/read, replacement, step status, laws, negative paths refused) — the planner/architect persistence substrate is healthy independent of the game. HOW_THINGS_WORK §12 added (the freeze-time screens chapter: recap variants, blocking dialogs, runInBackground) + synced to the StarForge vault. gm_systems lacks a selftest (improvement noted). All ledgers/roadmap/handoff current. Hourly retry stands; host reboot (Ken pushed) is the fast path.
+
+## ATTEMPT 7 — same soft-hang; hourly cadence holds (2026-07-12 ~04:55, Claude Code)
+
+Best memory conditions of the night (3.8GB free) — still not live (responsive, world never ticks). Seven attempts across every variation (cool-downs, older save, fresh boots) = conclusive: **host-level; the box needs its reboot (8 days uptime)**. Park + hourly retry continues autonomously; Ken has the push. Everything below rides the first good boot: roofs 11→64 (batched) → architect consult → village proposal (renderer ready) → normal soak cadence with all guards live.
+
+## ATTEMPT 8 — settled-instance ladder also fails; hourly cadence holds (2026-07-12 ~05:40)
+
+Hour-settled process, 8 RESUME retries — world never ticks. 8/8 conclusive: nothing recovers this host short of the reboot Ken was pushed about (uptime still 8 days). Game cycled down clean; hourly retry continues; every deliverable staged for the first good boot.
+
+## ATTEMPT 9 — unchanged; hourly holds (2026-07-12 ~06:45)
+Host unrebooted (uptime July 4), 9/9 failures. Cycled down clean. Awaiting reboot; hourly cadence.
+
+## ATTEMPT 10 — unchanged; hourly holds (2026-07-12 ~07:55)
+Host unrebooted, 10/10. Cycled down. Hourly cadence continues.
+
+## ATTEMPT 11 — unchanged; hourly holds (2026-07-12 ~09:05)
+Host unrebooted, 11/11. Cycled down. Hourly cadence continues; all deliverables staged.
+
+## ATTEMPT 12 — unchanged; hourly holds (2026-07-12 ~10:15)
+Host unrebooted, 12/12. Cycled down. Cadence continues.
+
+## ATTEMPT 13 — unchanged; hourly holds (2026-07-12 ~11:25)
+Host unrebooted, 13/13. Cycled down. Cadence continues.
+
+## ROOT CAUSE FOUND (Ken, 2026-07-12 ~12:20) — the "host failure" was STEAM HANGING
+
+All 13 load failures were the STEAM CLIENT wedged, not the box and not the game install. **Remedy: force-close Steam, restart it, relaunch the game — Ken did so; game live on a fresh instance (mod injected cleanly).** RECOVERY LADDER AMENDED: on ≥2 consecutive load-hangs, restart Steam (`taskkill /F /IM steam.exe` → `Start-Process steam://`) BEFORE further game retries — no more hourly parks for a client-side wedge. Reboot advice withdrawn; uptime was innocent.
+
+## ROOT CAUSE #2 (the REAL load wedge) + STUCK-LOAD RESCUE deployed (2026-07-12 ~12:45, Claude Code)
+
+Steam was only half the story: even on Ken''s fresh Steam, the Dolgellau load stuck at "Loading Complete". **Decompile-diagnosed (LoadingScreenFake.OnLoadingFinished): the continue button activates ONLY after `AlmanacPanelManager.initDone` (private static bool) — when the almanac panel''s init dies, the entire load waits forever.** Also explains why MainLoop (scaled-time WaitForSeconds) freezes while Update-driven systems churn — every stuck screen froze game time and with it ColonyBuilder''s heartbeat (the "no heartbeats after 04:06" bisect was the stuck screens'' consequence, not a build defect).
+**FIX DEPLOYED — STUCK-LOAD RESCUE in RecapDismisser:** screen active + no continue button for 30s → force `initDone=true` via reflection → the game''s own 20ms WaitUntil poll completes its chain → button activates → dismisser clicks it. Loads self-heal end to end. Validation in flight on the live boot.
+
+## RESCUE v1 TRACE RESULT — initDone was INNOCENT this boot; wedge is POST-gate (2026-07-12 ~13:10)
+
+Instrumented run (throttled state trace): screen ACTIVE, button checked every 30s for 5+ minutes, **no rescue line fired** — meaning `AlmanacPanelManager.initDone` was ALREADY TRUE (v1 only logged when flipping it) and the game's TaskController chain died AFTER the gate (between the WaitUntil and the button-activation .Then). The v1 rescue could only heal the initDone flavor of the wedge; this boot was the other flavor.
+**RESCUE v2 DEPLOYED:** stuck 30s + initDone already true → invoke `OnContinueClick()` DIRECTLY via reflection. Decompile-verified self-contained: it deactivates the button (no-op), hides the screen, `SetupScene()`, `StartGame()`, **`StartGoapTicker()`**, `OnGameplayStarted()` — no dependency on the button ever activating. Exactly the player's click, minus the button. Build clean, deployed in sync, validation watch in flight.
+
+## INPUT-API GOTCHA FOUND — target="resume" was a SILENT NO-OP (2026-07-12 ~13:30)
+
+`/api/game/input {action:"click"}` takes **x,y as 0..1 FRACTIONS of the window** (dashboard_server.py:2274-2284: `left + x_rel*width`); a `target` key is IGNORED (defaults 0.5,0.5 = window center). Every scripted "RESUME clicked" that passed `target="resume"` clicked the campfire art, not the button — eyes-on confirmed (menu unchanged after two such clicks). **Correct RESUME click: `{action:"click", x:0.856, y:0.328}`** (button at ~1657,359 in the 1936x1096 window) — landed first try, Dolgellau loading. This taints a subset of the 13 "load failure" attempts: some never left the main menu. Also: mod logs live at `%AppData%..\LocalLow\Foxy Voxel\Going Medieval\LLM_NPCs\logs\`, NOT BepInEx\plugins (one watch read the wrong dir → false "NO INJECTION"). Follow-up (backlog): add real named targets to the input API so scripts can't regress.
+
+## RESCUE v2 FIRED but world came up HALF-INITIALIZED → v3 replays the full chain (2026-07-12 ~13:45)
+
+**v2 milestone:** the rescue FIRED live (5:26:26 PM log: "OnContinueClick invoked directly") — first entry into Dolgellau after 14+ wedges: full HUD, 16 settlers, Spring day 7. **But the clock sat frozen at 00h with speed x3 selected and telemetry never resumed.** Root cause (LoadingScreenFake.OnLoadingFinished decompile): the dead chain does `InvokeLoadingCompleteEvent()` BEFORE button activation, and OnContinueClick alone skips it — subscribers include WorkerManager, StabilityManager, Heightmap, IdlePointManager, GlobalStatManager, MeshFusion, ObjectiveManager: the whole world's finalizers. "HUD visible" ≠ "world initialized".
+**v3 DEPLOYED:** rescue replays the chain in order — step 1 `InvokeLoadingCompleteEvent()` (safe to re-fire; game nulls the event after invoke), 3s beat, step 2 `OnContinueClick()`. Relaunch cycle in flight.
+
+## TRUE WEDGE ROOT CAUSE (Player.log): AudioEventsHandler NRE kills the SceneLoaded task (2026-07-12 ~14:00)
+
+Player.log shows the load pipeline dying in a ~20ms NRE loop: `AudioEventsHandler.OnMainSceneLoadedEvent()` (subscribes ~25 MonoSingleton events; ONE .Instance is null) throws inside `LoadingController.SceneLoaded`'s task step → `StepAction.IsCompleted` throws every frame → the SceneLoaded task NEVER completes → "Placing objects (87.5%)" freezes forever. initDone was a red herring; the v3 rescue force-finalized a HALF-LOADED world (16/16 HUD but pop=0, clock 00h, no spawned objects visible — "HUD visible ≠ world initialized" now has a second, deeper level: "finalizers ran ≠ objects loaded").
+**Prime suspect for WHY a singleton is null: our own RecapDismisser forcing `Application.runInBackground=true` every 2s — LoadingScreenFake.OnEnable sets it FALSE on purpose during loads, and the 13 wedged loads all postdate that force going live.** Two changes deployed: (1) runInBackground force now SKIPPED while the load screen is active (game's wish respected during loads; re-forced after), (2) SINGLETON AUDIT — on stuck detection, log exactly which of the 17 audited singletons is missing. Focus keep-alive added to the watch (unfocused + rIB=false would legitimately pause the load). Cycle in flight.
+
+## SMOKING GUN [REPRODUCED]: WE poisoned GameEventSystem — the 13-wedge streak was self-inflicted (2026-07-12 ~14:20)
+
+Singleton audit on a live stuck load: **`NSMedieval.GameEventSystem.GameEventSystem` instance MISSING** (+ GlobalShaderVariables unresolved-namespace, inconclusive). Mechanism, decompile-proven end to end (MonoSingleton.cs): the `Instance` getter caches `instanceInitialized=true` EVEN WHEN FindObjectOfType returns null; every later access returns the cached null, and when the REAL scene instance spawns during load its ctor sees initialized → `delete=true` → Awake self-DestroyImmediate. **Our EventInteractor.RealTimePump (added to Plugin.Update for the dialog-freeze fix) calls `Singleton("GameEventSystem")` at the MAIN MENU — the poisoning access.** Then AudioEventsHandler.OnMainSceneLoadedEvent hits the null → NRE every 20ms → SceneLoaded task never completes → "Placing objects 87.5%" forever. The wedge streak began exactly when RealTimePump shipped. runInBackground theory: DISPROVEN (wedge reproduced with force disabled + window focused).
+**FIX DEPLOYED:** EventInteractor.Singleton() now probes `IsInstantiated()` (reads the field, never caches) before touching the getter — menu-time calls return null harmlessly. FOLLOW-UP (backlog): sweep the other ~17 files' reflection `Instance` getters onto one poison-proof SafeSingleton helper. Definitive validation cycle in flight — expecting the game's OWN load chain to complete (no rescue needed).
+
+## ✅ VERIFIED: LOAD WEDGE KILLED AT ROOT — Dolgellau LIVE, longhouse COMPLETE (2026-07-12 14:26)
+
+**Validation:** with the poison-proof Singleton() deployed, the load completed on the game's OWN chain — recap screen up 6:20:36, real continue button appeared, dismisser's normal path clicked it ("recap auto-dismissed 14:20:48 — game time resumes"), NO rescue fired. WORLD LIVE 14:26:50: telemetry fresh, pop=4 (the HUD "16.0/16" is the FOOD counter, not pop). **EYES ON SCREEN: the LayoutV2 longhouse is FINISHED** — full roof, walls, plaza-facing door; Margaria sleeping inside, Etheldreda/Herebryht inside, Osric harvesting; stockpiles by the plaza; midnight day 7. Crisis reactor already on the flagged food crisis (forage+14, wood designated).
+Chain of five root-cause layers this arc, for the record: Steam client wedge (Ken) → input API took fractions not pixels + target= ignored (some "load failures" never left the menu) → mod logs live in LocalLow not plugins (false NO INJECTION) → initDone red herring → **GameEventSystem singleton poisoned by our own menu-time reflection [REPRODUCED]**. Rescue v3 stays as backstop; SingletonAudit stays as tripwire.
+**Suggested commit title:** `fix(load): kill singleton-poisoning load wedge at root; poison-proof reflection access, stuck-load rescue + audit as backstop`
+**Commit point NOW** — plus the stacked pre-written closes from the whole arc.
+Open next: architect consult on HouseComplete (village queue empty) → RENDER KEN'S VILLAGE PROPOSAL (standing deliverable); "no dry 12x11 footprint" siting msg needs review (area is marsh — elastic site search?); follow-up sweep: all reflection Instance getters → poison-proof helper; save bank requested via SaveGuard (confirm in soak).
+
+## HOST MEMORY WALL [REPRODUCED x2]: game hard-hangs ~1 min after world-live (2026-07-12 ~14:45)
+
+Load chain works (poisoning fix VERIFIED twice more — world-live 14:26 and 14:41), but BOTH sessions hard-hung ~60-90s post-live: WatchDog logged "+1468 MB, Free RAM: 985 MB", then the OS paged the game out (watch caught working set collapsing 3.1GB→1.56GB mid-hang) and the main thread never came back. Host: 32GB total, ~27GB held by other apps (a dozen Chrome processes ≈3GB, Antigravity ×2, Discord, claude CLI). NOT a mod defect — mod loop + telemetry + crisis systems all ran until the paging storm.
+**Mitigation running: RAM-gated launch** — retry loop launches only when host free RAM > 5GB (checks every 2 min, 30 min cap), else parks for Ken. **Ken's lever (flagged in chat): close spare Chrome windows or reboot; the game needs ~5GB headroom at world-live.**
+
+## PARKED on host memory (2026-07-12 15:20) — RAM-gate never opened
+
+RAM-gated relaunch waited 30 min for >5GB free; host DECLINED 4.7→1.7GB with the game OFF (something else growing — Chrome suspected). Game cycled down clean; RAM sentinel armed (wakes on >5GB). Everything mod-side is VERIFIED and documented; the only blocker is host headroom (Ken's lever, flagged in chat twice). Village proposal delivered; SaveGuard flag pending consumption on next stable boot.

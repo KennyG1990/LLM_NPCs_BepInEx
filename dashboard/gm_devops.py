@@ -103,7 +103,14 @@ def _launch(http, payload):
             if not GAME_EXE.exists():
                 http._send_json(404, {"ok": False, "error": f"game exe not found at {GAME_EXE}"})
                 return True
-            subprocess.Popen([str(GAME_EXE)], cwd=str(GAME_DIR))  # noqa: S603
+            # Strip Doorstop's env vars: if THIS dashboard was auto-spawned by
+            # the modded game, the child game would inherit DOORSTOP_* and
+            # Unity Doorstop would think it's already injected and skip
+            # loading BepInEx entirely (observed 2026-07-11: exe launches
+            # stopped injecting while Steam launches worked).
+            clean_env = {k: v for k, v in os.environ.items()
+                         if not k.upper().startswith("DOORSTOP")}
+            subprocess.Popen([str(GAME_EXE)], cwd=str(GAME_DIR), env=clean_env)  # noqa: S603
     except Exception as e:  # noqa: BLE001
         http._send_json(500, {"ok": False, "error": str(e)})
         return True
