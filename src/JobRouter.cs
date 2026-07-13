@@ -80,6 +80,43 @@ namespace GoingMedieval.LLM_NPCs
         /// <summary>Crisis over: allow skill routing to reassert.</summary>
         public static void ExitCrisis() { _crisisApplied = false; }
 
+        // FOOD WARNING TIER (Ken's playbook §2: stock < 12×3×settlers → raise
+        // farming/hunting BEFORE crisis). Gentler than crisis: food jobs to
+        // priority 2, NOTHING suspended — research and art continue.
+        private static bool _foodPressureApplied = false;
+
+        public static string FoodPressureAll(List<Settler> settlers)
+        {
+            try
+            {
+                if (_foodPressureApplied) return LastResult;
+                var jobTypeT = FindType("NSMedieval.State.WorkerJobs.JobType");
+                if (jobTypeT == null) return LastResult;
+                int applied = 0;
+                foreach (var s in settlers)
+                {
+                    if (s == null || s.gameObject == null) continue;
+                    if (!GameBridge.TryGetValidatedSettlerIdentity(s.gameObject, out _, out _, out var rc)) continue;
+                    var agent = GameBridge.GetGoapAgent(rc);
+                    var change = agent?.GetType().GetMethod("ChangeJobPriority", BindingFlags.Public | BindingFlags.Instance);
+                    if (change == null) continue;
+                    foreach (var j in CrisisFoodJobs)
+                        try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, j), (object)2 }); } catch { }
+                    applied++;
+                }
+                if (applied > 0)
+                {
+                    _foodPressureApplied = true;
+                    LastResult = $"jobs: FOOD WARNING (3-day buffer breached) — food jobs to prio 2 for {applied} settler(s); research/art continue";
+                    LLMNPCsPlugin.LogToFile("[JobRouter] " + LastResult);
+                }
+                return LastResult;
+            }
+            catch (Exception ex) { return LastResult = "food pressure EXC: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        public static void ExitFoodPressure() { _foodPressureApplied = false; }
+
         // ── BUILD PRESSURE (coherence fix, eyes-on-screen 2026-07-11) ──
         // The fletcher blueprint sat "all buildable" for HOURS while the JOBS
         // grid showed Construct at 3/4/4 for everyone (Giles Fish=1 by the

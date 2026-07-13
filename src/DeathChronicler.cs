@@ -67,6 +67,11 @@ namespace GoingMedieval.LLM_NPCs
                         m.Requested = true;
                         _chronicled.Add(kv.Key);
                         LLMNPCsPlugin.LogToFile($"[DeathChronicler] {m.Name} ({kv.Key}) gone {m.Ticks} ticks — writing their chronicle");
+                        // P8 FACTS FIRST: the death record posts immediately with
+                        // the best-known cause (crisis state), independent of the
+                        // LLM story (which may defer on budget).
+                        GameTruthBridge.ReportDeath(kv.Key,
+                            FoodGatherer.Crisis ? "starvation (food crisis)" : "");
                         _ = ChronicleAsync(kv.Key, m.Name, present);
                     }
                 }

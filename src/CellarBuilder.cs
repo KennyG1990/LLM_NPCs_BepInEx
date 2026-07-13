@@ -26,8 +26,9 @@ namespace GoingMedieval.LLM_NPCs
     {
         public static string LastResult = "(idle)";
         private static bool _doneThisSession = false;
+        private static int _resumeRing = 2;   // time-budgeted scan resumes here next tick
 
-        public static void Reset() { _doneThisSession = false; LastResult = "(idle)"; }
+        public static void Reset() { _doneThisSession = false; _resumeRing = 2; LastResult = "(idle)"; }
 
         private static Type FindType(string full)
         {
@@ -130,11 +131,31 @@ namespace GoingMedieval.LLM_NPCs
 
                 // Find a hill face: a SOLID cell at home level whose neighbor toward
                 // home is walkable air — settlers can stand there and mine inward.
-                for (int r = 2; r <= radius; r++)
+                //
+                // TIME-BUDGETED + instrumented (2026-07-12): three consecutive
+                // main-thread freezes all died between the food log and the
+                // cellar log with LastResult never set — this scan (radius 60 ≈
+                // 14k reflected GetNode calls, on a map whose water sim is hot)
+                // is the prime suspect and previously ran unbounded and silent.
+                // Now: entry log, 50ms budget per tick (resumes at the saved
+                // ring), progress log every 10 rings — a freeze inside the scan
+                // becomes visible and bounded instead of killing the session.
+                LLMNPCsPlugin.LogToFile($"[CellarBuilder] scan begin (ring {_resumeRing}..{radius})");
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                for (int r = _resumeRing; r <= radius; r++)
+                {
+                    if (r % 10 == 0) LLMNPCsPlugin.LogToFile($"[CellarBuilder] scan at ring {r}/{radius}");
                     for (int dx = -r; dx <= r; dx++)
                         for (int dz = -r; dz <= r; dz++)
                         {
                             if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != r) continue;
+                            // per-CELL budget (per-ring allowed ~1000 queries between
+                            // checks at r=60 — the 67s-freeze lesson applies here too)
+                            if (sw.ElapsedMilliseconds > 50)
+                            {
+                                _resumeRing = r;
+                                return LastResult = $"cellar: scan paused at ring {r}/{radius} (time budget; resumes next tick)";
+                            }
                             int fx = hx + dx, fz = hz + dz;
                             if (!NodeSolid(fx, hy, fz)) continue;                 // face voxel must be rock/dirt
                             if (NodeSolid(fx - Math.Sign(dx), hy, fz - (dx == 0 ? Math.Sign(dz) : 0))) continue; // approach cell must be open
@@ -163,7 +184,9 @@ namespace GoingMedieval.LLM_NPCs
                                 return LastResult;
                             }
                         }
+                }
                 _doneThisSession = true;    // don't rescan every tick on a flat map
+                LLMNPCsPlugin.LogToFile($"[CellarBuilder] scan complete — no hill face (radius {radius})");
                 return LastResult = "cellar: no minable hill face near home (flat terrain) — needs stairs support (v2)";
             }
             catch (Exception ex) { return LastResult = "cellar EXC: " + (ex.InnerException?.Message ?? ex.Message); }

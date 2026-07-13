@@ -46,11 +46,24 @@ namespace GoingMedieval.LLM_NPCs
                 foreach (var n in Enum.GetNames(hourT))
                 {
                     var ln = n.ToLowerInvariant();
-                    if (ln.Contains("sleep")) _hourVals["Sleep"] = Enum.Parse(hourT, n);
-                    else if (ln.Contains("work") || ln.Contains("job")) _hourVals["Work"] = Enum.Parse(hourT, n);
-                    else if (ln.Contains("leisure") || ln.Contains("joy") || ln.Contains("recreation")) _hourVals["Leisure"] = Enum.Parse(hourT, n);
-                    else if (ln.Contains("role") || ln.Contains("dut")) _hourVals["RoleDuties"] = Enum.Parse(hourT, n);
-                    else if (ln.Contains("any") || ln.Contains("free") || ln.Contains("none")) _hourVals["Anything"] = Enum.Parse(hourT, n);
+                    // CRASH LESSON (2026-07-12, native crash Crash_..._023620596):
+                    // "RoleJob" matched the work||job branch and OVERWROTE Work —
+                    // every Work hour became RoleJob; role-less settlers resolved
+                    // it to None (-1) and the goal loop crash-spun. Rules:
+                    //   * None is NEVER schedulable
+                    //   * role-ish names are consumed BEFORE the work branch
+                    //   * first match WINS (no overwrites)
+                    if (ln == "none") continue;
+                    if (ln.Contains("role") || ln.Contains("dut"))
+                    { if (!_hourVals.ContainsKey("RoleDuties")) _hourVals["RoleDuties"] = Enum.Parse(hourT, n); continue; }
+                    if (ln.Contains("sleep"))
+                    { if (!_hourVals.ContainsKey("Sleep")) _hourVals["Sleep"] = Enum.Parse(hourT, n); }
+                    else if (ln.Contains("work") || ln.Contains("job"))
+                    { if (!_hourVals.ContainsKey("Work")) _hourVals["Work"] = Enum.Parse(hourT, n); }
+                    else if (ln.Contains("leisure") || ln.Contains("joy") || ln.Contains("recreation"))
+                    { if (!_hourVals.ContainsKey("Leisure")) _hourVals["Leisure"] = Enum.Parse(hourT, n); }
+                    else if (ln.Contains("any") || ln.Contains("free"))
+                    { if (!_hourVals.ContainsKey("Anything")) _hourVals["Anything"] = Enum.Parse(hourT, n); }
                 }
             if (_hourVals.TryGetValue(plan, out var v)) return v;
             if (plan == "RoleDuties" && _hourVals.TryGetValue("Work", out var w)) return w;   // no role system yet -> work

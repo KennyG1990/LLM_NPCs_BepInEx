@@ -21,6 +21,7 @@ namespace GoingMedieval.LLM_NPCs
     public static class StockpilePlacer
     {
         private static Type _managerType;
+        private static int _storageResumeRadius = 0;   // time-budgeted site scan resume
         private static Type _vec3IntType;
 
         /// <summary>When set (grid {x,y,z}), placements anchor on the colony HOME
@@ -902,11 +903,23 @@ namespace GoingMedieval.LLM_NPCs
                             if (CellOk(x + ix, z + iz)) s++;
                     return s;
                 }
+                // TIME BUDGET (FreezeDetector's first live catch, 2026-07-12:
+                // hard hang during storage-place — this spiral is ~2500
+                // reflected map queries racing the water sim, the same class
+                // that froze house siting). 50ms per tick, resume next tick.
+                var swPlace = System.Diagnostics.Stopwatch.StartNew();
                 int bestScore = 0, bx = 0, bz = 0; bool found = false;
-                for (int radius = 0; radius <= 12 && bestScore < size * size; radius++)
+                for (int radius = _storageResumeRadius; radius <= 12 && bestScore < size * size; radius++)
                 {
                     for (int dx = -radius; dx <= radius; dx++)
                     {
+                        // per-ORIGIN budget (the per-ring check allowed a 67s
+                        // freeze in the house spiral — same class here)
+                        if (swPlace.ElapsedMilliseconds > 50)
+                        {
+                            _storageResumeRadius = radius;
+                            return $"storage: site scan paused at radius {radius}/12 (time budget; resumes next tick)";
+                        }
                         foreach (var dz in (radius == 0)
                                  ? new[] { 0 }.AsEnumerable()
                                  : (Math.Abs(dx) == radius
@@ -922,6 +935,7 @@ namespace GoingMedieval.LLM_NPCs
                         if (bestScore == size * size) break;
                     }
                 }
+                _storageResumeRadius = 0;   // full pass done — fresh start next call
                 if (found && bestScore > 0)
                 {
                     // GROUND TRUTH (MeshAreaMaker.GetMeshArea): SpawnStockpile

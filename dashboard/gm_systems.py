@@ -415,6 +415,70 @@ def known_events(conn, save_id, settler_id, limit=10):
         ORDER BY wek.learned_at DESC LIMIT ?
     """, (save_id, settler_id, limit)))
 
+EVENT_EVOLVE_AGE = 2 * 86400     # active -> evolving after 2 days
+EVENT_RESOLVE_AGE = 6 * 86400    # evolving -> resolved after 6 days total
+EVENT_EXPIRE_AGE = 14 * 86400    # resolved -> expired (leaves dialogue context)
+
+_EVOLUTION_NOTES = {
+    "military": ("the fighting drags on and word of fresh skirmishes arrives",
+                 "the matter is settled; the survivors count their dead"),
+    "political": ("positions harden and new proclamations circulate",
+                  "the affair concludes and talk moves on"),
+    "economic": ("prices shift as the news works through the markets",
+                 "trade finds its new level"),
+    "social": ("the story grows in the telling",
+                "folk speak of it less with each passing day"),
+    "mysterious": ("stranger details attach themselves to the tale",
+                   "no answer ever came, and the matter faded"),
+    "rumor": ("the rumor mutates as it passes from mouth to mouth",
+              "the rumor is worn out and dies"),
+}
+
+
+def events_evolve(ctx, conn, save_id, now=None):
+    """Deterministic event lifecycle (doc 02: 'events evolve and update over
+    time rather than firing once and vanishing'). Age drives active ->
+    evolving -> resolved -> expired, each transition appending an update the
+    dialogue layer can narrate. War events resolve EARLY when their war ends
+    (state truth beats age)."""
+    now = now or _now()
+    transitions = []
+    for ev in _rows(conn.execute(
+            "SELECT * FROM world_events WHERE save_id = ? AND status IN ('active','evolving','resolved')",
+            (save_id,))):
+        age = now - float(ev["created_at"])
+        status = ev["status"]
+        new_status = None
+        # war events resolve the moment their war ends
+        if status in ("active", "evolving") and ev["event_type"] == "military" \
+           and str(ev["title"] or "").startswith("War:"):
+            affected = _loads(ev["affected_json"], [])
+            if len(affected) >= 2:
+                rel = conn.execute(
+                    "SELECT state FROM faction_relations WHERE save_id=? AND faction_a=? AND faction_b=?",
+                    (save_id, *sorted(affected[:2]))).fetchone()
+                if rel and rel["state"] != "war":
+                    new_status = "resolved"
+        if new_status is None:
+            if status == "active" and age >= EVENT_EVOLVE_AGE:
+                new_status = "evolving"
+            elif status == "evolving" and age >= EVENT_RESOLVE_AGE:
+                new_status = "resolved"
+            elif status == "resolved" and age >= EVENT_EXPIRE_AGE:
+                new_status = "expired"
+        if new_status is None:
+            continue
+        notes = _EVOLUTION_NOTES.get(ev["event_type"], _EVOLUTION_NOTES["social"])
+        note = notes[0] if new_status == "evolving" else notes[1]
+        updates = _loads(ev["updates_json"], [])
+        updates.append({"at": now, "status": new_status, "note": note})
+        conn.execute("UPDATE world_events SET status = ?, updates_json = ?, updated_at = ? WHERE id = ?",
+                     (new_status, json.dumps(updates, ensure_ascii=False), now, ev["id"]))
+        transitions.append({"event_id": ev["id"], "title": ev["title"],
+                            "from": status, "to": new_status, "note": note})
+    return transitions
+
+
 # ---------------------------------------------------------------------------
 # P6 - Diplomacy
 # ---------------------------------------------------------------------------
@@ -477,6 +541,21 @@ def apply_diplomacy_action(ctx, conn, save_id, faction_a, faction_b, action, ter
         stats["wars_declared"] = stats.get("wars_declared", 0) + 1
         proclamation = f"Let it be known: {faction_a} declares war upon {faction_b}. Old pacts are ash."
         event = ("military", f"War: {a} vs {b}", proclamation)
+        # ALLIANCE-SHATTER CASCADE (doc 03 / scenario 1: "Osric declares war,
+        # their alliance shatters"): every ally of the DEFENDER now thinks
+        # worse of the aggressor — attack my friend, lose my goodwill.
+        for ally_rel in _rows(conn.execute(
+                "SELECT * FROM faction_relations WHERE save_id = ? AND state = 'alliance' "
+                "AND (faction_a = ? OR faction_b = ?)", (save_id, faction_b, faction_b))):
+            ally = ally_rel["faction_a"] if ally_rel["faction_b"] == faction_b else ally_rel["faction_b"]
+            if ally == faction_a:
+                continue
+            cascade = get_relation(conn, save_id, faction_a, ally)
+            new_rel = max(-1.0, float(cascade["relation"] or 0.0) - 0.2)
+            conn.execute("UPDATE faction_relations SET relation = ?, updated_at = ? WHERE id = ?",
+                         (new_rel, now, cascade["id"]))
+            _log_diplomacy(conn, save_id, ally, "ally_grievance", faction_a,
+                           f"{ally} condemns {faction_a}'s attack on their ally {faction_b}.")
     elif action == "make_peace":
         reparations = terms.get("reparations", 0)
         conn.execute("""
@@ -539,13 +618,99 @@ def apply_diplomacy_action(ctx, conn, save_id, faction_a, faction_b, action, ter
     event_id = None
     if event:
         event_id = _diplomacy_world_event(conn, save_id, event[0], event[1], event[2], [a, b])
+        # PROPAGATE (scenario 1's rumor loop): a proclamation nobody hears
+        # never reaches dialogue. Every known settler learns it as rumor —
+        # word of wars and pacts travels; the depth of detail stays gated by
+        # trust at dialogue time.
+        settlers = [row["settler_id"] for row in _rows(conn.execute(
+            "SELECT settler_id FROM npc_memory_profiles WHERE save_id = ?", (save_id,)))]
+        if settlers:
+            try:
+                propagate_event(ctx, conn, save_id, event_id, settlers, "rumor")
+            except Exception:  # noqa: BLE001 - propagation must never break the action
+                pass
     ensure_entity(conn, save_id, "faction", faction_a)
     ensure_entity(conn, save_id, "faction", faction_b)
     return {"ok": True, "action": action, "proclamation": proclamation, "world_event_id": event_id}
 
-def run_diplomacy_round(ctx, conn, save_id):
+# Legal-move thresholds in the relation float domain (-1.0 .. 1.0)
+WAR_LEGAL_BELOW = -0.4
+ALLIANCE_LEGAL_ABOVE = 0.4
+TRIBUTE_LEGAL_BAND = (-0.4, -0.2)
+PEACE_LEGAL_FATIGUE = 3.0
+
+
+def known_factions(conn, save_id):
+    names = set()
+    for row in _rows(conn.execute(
+            "SELECT faction_a, faction_b FROM faction_relations WHERE save_id = ?", (save_id,))):
+        names.add(row["faction_a"]); names.add(row["faction_b"])
+    for row in _rows(conn.execute(
+            "SELECT name FROM world_entities WHERE save_id = ? AND kind = 'faction'", (save_id,))):
+        names.add(row["name"])
+    return sorted(names)
+
+
+def diplomacy_legal_moves(conn, save_id, faction):
+    """The BOUNDED MENU (design doc P6): every move the state permits this
+    faction right now. The LLM may only ever pick from this list — an
+    invalid pick falls back deterministically. Pure state -> menu."""
+    moves = []
+    for other in known_factions(conn, save_id):
+        if other == faction:
+            continue
+        rel = get_relation(conn, save_id, faction, other)
+        relation = float(rel["relation"] or 0.0)
+        if rel["state"] == "war":
+            if float(rel["war_fatigue"] or 0.0) >= PEACE_LEGAL_FATIGUE:
+                moves.append({"kind": "make_peace", "target": other})
+        else:
+            if relation < WAR_LEGAL_BELOW:
+                moves.append({"kind": "declare_war", "target": other})
+            if relation >= ALLIANCE_LEGAL_ABOVE and rel["state"] != "alliance":
+                moves.append({"kind": "form_alliance", "target": other})
+            if relation >= 0.0 and not rel["trade_pact"]:
+                moves.append({"kind": "trade_pact", "target": other})
+            if TRIBUTE_LEGAL_BAND[0] <= relation < TRIBUTE_LEGAL_BAND[1]:
+                moves.append({"kind": "tribute", "target": other})
+    moves.append({"kind": "no_move", "target": None})
+    return moves
+
+
+def report_raid(ctx, conn, save_id, raider, target, casualties_raider=0, casualties_target=0):
+    """GROUND-TRUTH FEED: a real in-game raid. Worsens relations, records
+    losses in the pair's war stats, and — because a raid IS an act of war —
+    escalates to declared war once relations collapse past the threshold."""
+    rel = get_relation(conn, save_id, raider, target)
+    relation = max(-1.0, float(rel["relation"] or 0.0) - 0.25)
+    stats = _loads(rel["stats_json"], {})
+    stats["losses_" + str(raider)] = stats.get("losses_" + str(raider), 0) + int(casualties_raider)
+    stats["losses_" + str(target)] = stats.get("losses_" + str(target), 0) + int(casualties_target)
+    stats["raids"] = stats.get("raids", 0) + 1
+    conn.execute("UPDATE faction_relations SET relation = ?, stats_json = ?, updated_at = ? WHERE id = ?",
+                 (relation, json.dumps(stats, ensure_ascii=False), _now(), rel["id"]))
+    _log_diplomacy(conn, save_id, raider, "raid", target,
+                   f"{raider} raided {target}" +
+                   (f" ({casualties_target} defenders fell)" if casualties_target else "."))
+    escalated = None
+    if rel["state"] != "war" and relation <= -0.6:
+        escalated = apply_diplomacy_action(ctx, conn, save_id, raider, target, "declare_war")
+    return {"ok": True, "relation": round(relation, 2), "escalated_to_war": bool(escalated)}
+
+
+def _reparations_amount(stats, a, b):
+    """Loss-ratio reparations (doc 03): the bloodier loser pays more."""
+    la = int(stats.get("losses_" + str(a), 0))
+    lb = int(stats.get("losses_" + str(b), 0))
+    return 25 + 25 * abs(la - lb), (a if la >= lb else b)
+
+
+def run_diplomacy_round(ctx, conn, save_id, choose_move=None):
     """One deterministic diplomacy round: fatigue ticks, exhausted wars sue
-    for peace, relations drift toward their state's baseline."""
+    for peace, relations drift toward their state's baseline — and ONE
+    faction (round-robin by least-recent mover) makes a menu move.
+    choose_move(faction, menu) -> move injects the LLM; None or an illegal
+    answer falls back to the first non-trivial legal move."""
     round_no = (conn.execute(
         "SELECT COALESCE(MAX(round_no), 0) AS r FROM diplomacy_log WHERE save_id = ?", (save_id,)
     ).fetchone()["r"] or 0) + 1
@@ -562,8 +727,10 @@ def run_diplomacy_round(ctx, conn, save_id):
             conn.execute("UPDATE faction_relations SET stats_json = ? WHERE id = ?",
                          (json.dumps(stats, ensure_ascii=False), rel["id"]))
             if fatigue >= WAR_FATIGUE_PEACE_THRESHOLD:
+                amount, payer = _reparations_amount(_loads(rel["stats_json"], {}), a, b)
                 result = apply_diplomacy_action(ctx, conn, save_id, a, b, "make_peace",
-                                                {"reparations": 25, "why": "war fatigue"})
+                                                {"reparations": amount, "payer": payer,
+                                                 "why": "war fatigue"})
                 _log_diplomacy(conn, save_id, a, "war_fatigue_peace", b,
                                result["proclamation"], {"fatigue": fatigue}, round_no)
                 moves.append({"actor": a, "action": "war_fatigue_peace", "target": b, "fatigue": fatigue})
@@ -577,6 +744,36 @@ def run_diplomacy_round(ctx, conn, save_id):
                 conn.execute("UPDATE faction_relations SET relation = ?, updated_at = ? WHERE id = ?",
                              (drifted, _now(), rel["id"]))
                 moves.append({"actor": a, "action": "relation_drift", "target": b, "relation": round(drifted, 2)})
+    # ONE agent move per round (doc 03: "factions take turns... at a
+    # believable pace"): round-robin by least-recent mover, bounded menu,
+    # injectable chooser (the LLM), deterministic fallback on garbage.
+    factions = known_factions(conn, save_id)
+    if factions:
+        recency = {row["actor"]: row["last"] for row in _rows(conn.execute(
+            "SELECT actor, MAX(created_at) AS last FROM diplomacy_log "
+            "WHERE save_id = ? GROUP BY actor", (save_id,)))}
+        mover = sorted(factions, key=lambda f: recency.get(f, 0))[0]
+        menu = diplomacy_legal_moves(conn, save_id, mover)
+        move = None
+        if choose_move is not None:
+            try:
+                move = choose_move(mover, menu)
+            except Exception:  # noqa: BLE001 - LLM chooser must never break the round
+                move = None
+        if move is None or not any(m["kind"] == move.get("kind") and m["target"] == move.get("target")
+                                   for m in menu):
+            real = [m for m in menu if m["kind"] != "no_move"]
+            move = real[0] if real else {"kind": "no_move", "target": None}
+        if move["kind"] != "no_move":
+            terms = {"payer": move["target"], "amount": 5} if move["kind"] == "tribute" else None
+            agent_result = apply_diplomacy_action(ctx, conn, save_id, mover, move["target"],
+                                                  move["kind"], terms)
+            if agent_result.get("ok"):
+                moves.append({"actor": mover, "action": move["kind"], "target": move["target"]})
+        else:
+            _log_diplomacy(conn, save_id, mover, "no_move", "",
+                           f"{mover} held their counsel this round.", None, round_no)
+            moves.append({"actor": mover, "action": "no_move", "target": None})
     _log_diplomacy(conn, save_id, "world", "round_completed", "",
                    f"Diplomacy round {round_no}: {len(moves)} moves.", {"moves": len(moves)}, round_no)
     return {"round": round_no, "moves": moves}
@@ -694,6 +891,82 @@ def romance_initiative_candidates(conn, save_id):
                 "because": sorted(traits & ROMANCE_INITIATIVE_TRAITS),
             })
     return candidates
+
+ROMANCE_SIGNAL_THRESHOLD = 0.3    # (romance+attraction)/2 needed for autonomy
+ROMANCE_STAGE_INTERACTIONS = {    # what a stage's courtship looks like
+    "strangers": ("shared_meal",),
+    "acquainted": ("shared_meal", "gift"),
+    "courting": ("courtship", "gift", "kiss"),
+    "betrothed": ("courtship", "kiss"),
+}
+
+
+def romance_autonomous_tick(ctx, conn, save_id, rng=None):
+    """Bonds form BY THEMSELVES (doc 06 'forged by the hearth, not the
+    spreadsheet' + doc 01 NPC initiative): pairs whose live social state
+    (relationships.romance/attraction, fed by the mod's social hub) carries a
+    real signal roll courtship interactions; initiative-trait settlers with
+    deep enough intimacy propose. Betrothals and marriages become world
+    events the whole village hears about (scenario 4). Decay runs first —
+    neglect cools what autonomy doesn't tend."""
+    import random as _random
+    rng = rng or _random
+    decayed = romance_decay(ctx, conn, save_id)
+    interactions = []
+    milestones = []
+    pairs = _rows(conn.execute("""
+        SELECT subject, object,
+               (COALESCE(romance, 0) + COALESCE(attraction, 0)) / 2.0 AS signal
+        FROM relationships
+        WHERE save_id = ? AND subject < object
+          AND (COALESCE(romance, 0) + COALESCE(attraction, 0)) / 2.0 >= ?
+    """, (save_id, ROMANCE_SIGNAL_THRESHOLD)))
+    for pair in pairs:
+        a, b, signal = pair["subject"], pair["object"], float(pair["signal"])
+        if rng.random() >= 0.25 + signal * 0.5:
+            continue
+        state = conn.execute(
+            "SELECT stage, intimacy FROM romance_states WHERE save_id=? AND settler_id=? AND partner_id=?",
+            (save_id, a, b)).fetchone()
+        stage = state["stage"] if state else "strangers"
+        intimacy = float(state["intimacy"]) if state else 0.0
+        # proposal: only an initiative-trait settler with deep intimacy —
+        # once at "courting" (the betrothal ask) and again at "betrothed"
+        # with deeper intimacy still (the wedding vows).
+        interaction = None
+        if (stage == "courting" and intimacy >= 0.6) or \
+           (stage == "betrothed" and intimacy >= 0.8):
+            traits_row = conn.execute(
+                "SELECT traits FROM npc_memory_profiles WHERE save_id=? AND settler_id=?",
+                (save_id, a)).fetchone()
+            traits = {t.strip().lower() for t in
+                      str(traits_row["traits"] if traits_row else "").replace(";", ",").split(",")}
+            if traits & ROMANCE_INITIATIVE_TRAITS:
+                interaction = "proposal"
+        if interaction is None:
+            options = ROMANCE_STAGE_INTERACTIONS.get(stage, ("shared_meal",))
+            interaction = options[rng.randrange(len(options))]
+        result = romance_interact(ctx, conn, save_id, a, b, interaction)
+        if not result.get("ok"):
+            continue
+        interactions.append({"pair": (a, b), "interaction": interaction,
+                             "stage": result["stage"]})
+        if result.get("stage_changed") and result["stage"] in ("betrothed", "married"):
+            verb = "are betrothed" if result["stage"] == "betrothed" else "are wed"
+            event_id = _diplomacy_world_event(
+                conn, save_id, "social", f"{a} and {b} {verb}",
+                f"Word spreads through the settlement: {a} and {b} {verb}.", [a, b])
+            settlers = [r["settler_id"] for r in _rows(conn.execute(
+                "SELECT settler_id FROM npc_memory_profiles WHERE save_id = ?", (save_id,)))]
+            if settlers:
+                try:
+                    propagate_event(ctx, conn, save_id, event_id, settlers, "secondhand")
+                except Exception:  # noqa: BLE001
+                    pass
+            milestones.append({"pair": (a, b), "stage": result["stage"],
+                               "world_event_id": event_id})
+    return {"decayed": decayed, "interactions": interactions, "milestones": milestones}
+
 
 # ---------------------------------------------------------------------------
 # P8 - Death history
@@ -841,6 +1114,15 @@ def infect(ctx, conn, save_id, settler_id, disease, source="", season="winter"):
                 conn, save_id, "social", f"Outbreak of {disease}",
                 f"{active} settlers are down with {disease}. Word of it spreads.",
                 ["settlement"])
+            # scenario 2: "a visiting envoy hears of the outbreak and it
+            # becomes a talking point" — everyone learns the rumor.
+            settlers = [r["settler_id"] for r in _rows(conn.execute(
+                "SELECT settler_id FROM npc_memory_profiles WHERE save_id = ?", (save_id,)))]
+            if settlers:
+                try:
+                    propagate_event(ctx, conn, save_id, outbreak_event_id, settlers, "rumor")
+                except Exception:  # noqa: BLE001
+                    pass
     return {"ok": True, "infected": True, "stage": "incubating", "active_cases": active,
             "outbreak_event_id": outbreak_event_id}
 
@@ -909,6 +1191,69 @@ def disease_tick(ctx, conn, save_id):
                         "from": "recovering", "to": "recovered"})
     return changes
 
+SPREAD_QUARANTINE_FACTOR = 0.25   # quarantine cuts spread chance to a quarter
+ONSET_FACTOR = 0.10               # seasonal onset = SEASON_RISK * this, per tick
+SEASON_DISEASES = {               # what the season itself brings (doc 04)
+    "winter": ("cold", "fever"),
+    "autumn": ("cold", "dysentery"),
+    "spring": ("fever",),
+    "summer": ("dysentery",),
+}
+
+
+def disease_spread(ctx, conn, save_id, season="winter", rng=None):
+    """Person-to-person spread (doc 04 bullet 1 / scenario 2: 'a sick
+    traveller infects two settlers'). Each contagious, UNQUARANTINED case
+    rolls SEASON_RISK against every other settler; quarantine cuts the roll
+    to a quarter. infect() itself still applies immunity and Medicine-skill
+    resistance. rng injectable for deterministic tests."""
+    import random as _random
+    rng = rng or _random
+    risk = SEASON_RISK.get(season, 0.15)
+    infections = []
+    carriers = _rows(conn.execute("""
+        SELECT DISTINCT settler_id, disease, quarantined FROM disease_states
+        WHERE save_id = ? AND stage IN ('sick', 'critical')
+    """, (save_id,)))
+    if not carriers:
+        return infections
+    settlers = [row["settler_id"] for row in _rows(conn.execute(
+        "SELECT settler_id FROM npc_memory_profiles WHERE save_id = ?", (save_id,)))]
+    for carrier in carriers:
+        chance = risk * (SPREAD_QUARANTINE_FACTOR if carrier["quarantined"] else 1.0)
+        for target in settlers:
+            if target == carrier["settler_id"]:
+                continue
+            if rng.random() < chance:
+                result = infect(ctx, conn, save_id, target, carrier["disease"],
+                                source=carrier["settler_id"], season=season)
+                if result.get("infected"):
+                    infections.append({"from": carrier["settler_id"], "to": target,
+                                       "disease": carrier["disease"]})
+    return infections
+
+
+def seasonal_onset(ctx, conn, save_id, season="winter", rng=None):
+    """The season itself sickens people (doc 04: 'odds driven by the
+    season, cold and wet weather'): a small per-tick chance that one settler
+    catches the season's illness with no carrier involved."""
+    import random as _random
+    rng = rng or _random
+    chance = SEASON_RISK.get(season, 0.15) * ONSET_FACTOR
+    diseases = SEASON_DISEASES.get(season, ("cold",))
+    onsets = []
+    for row in _rows(conn.execute(
+            "SELECT settler_id FROM npc_memory_profiles WHERE save_id = ?", (save_id,))):
+        if rng.random() < chance:
+            disease = diseases[rng.randrange(len(diseases))] if hasattr(rng, "randrange") \
+                else diseases[0]
+            result = infect(ctx, conn, save_id, row["settler_id"], disease,
+                            source=f"the {season} air", season=season)
+            if result.get("infected"):
+                onsets.append({"settler_id": row["settler_id"], "disease": disease})
+    return onsets
+
+
 # ---------------------------------------------------------------------------
 # P10 - Combat incidents
 # ---------------------------------------------------------------------------
@@ -932,6 +1277,21 @@ def classify_combat_incident(ctx, conn, save_id, trigger_type, aggressor, defend
         trust = float(rel["trust"]) if rel and rel["trust"] is not None else 0.5
         stance = "support_player" if trust > 0.6 else ("oppose_player" if trust < 0.3 else "neutral")
         stances.append({"settler_id": participant, "trust": trust, "stance": stance})
+    # FACTION INTERVENTION (doc 07: "a nearby lord you're allied with
+    # intervenes... and joins the defense"): any faction allied to the
+    # DEFENDER (or strongly friendly, relation >= 0.4) sends aid.
+    interventions = []
+    for rel in _rows(conn.execute(
+            "SELECT * FROM faction_relations WHERE save_id = ? AND (faction_a = ? OR faction_b = ?)",
+            (save_id, defender, defender))):
+        other = rel["faction_a"] if rel["faction_b"] == defender else rel["faction_b"]
+        if other == aggressor:
+            continue
+        if rel["state"] == "alliance" or float(rel["relation"] or 0.0) >= 0.4:
+            interventions.append({
+                "faction": other, "side": "defender",
+                "arrival_line": f"Riders of {other} crest the hill — '{defender} does not stand alone this day!'",
+            })
     verdict = {
         "aggressor": aggressor,
         "defender": defender,
@@ -939,6 +1299,7 @@ def classify_combat_incident(ctx, conn, save_id, trigger_type, aggressor, defend
         "defender_type": "militia" if defenders_needed else "none",
         "civilian_panic": civilian_panic,
         "stances": stances,
+        "interventions": interventions,
     }
     aftermath = (f"{len(casualties)} casualties at {location or 'the settlement'}; "
                  f"{'militia raised, ' if defenders_needed else ''}"
@@ -963,8 +1324,25 @@ def classify_combat_incident(ctx, conn, save_id, trigger_type, aggressor, defend
         )
     for casualty in casualties:
         record_death(ctx, conn, save_id, casualty, cause=f"combat at {location or 'the settlement'}")
+    # WORD TRAVELS (scenario 3's aftermath feeding the world): everyone hears.
+    settlers = [r["settler_id"] for r in _rows(conn.execute(
+        "SELECT settler_id FROM npc_memory_profiles WHERE save_id = ?", (save_id,)))]
+    if settlers:
+        try:
+            propagate_event(ctx, conn, save_id, event_id, settlers, "secondhand")
+        except Exception:  # noqa: BLE001
+            pass
+    # COMBAT FEEDS DIPLOMACY (doc 07: "casualties and the failed raid feed
+    # straight back into AI Diplomacy"): when both sides are known factions,
+    # the incident IS a raid — relations sour, war stats accrue, escalation
+    # to declared war happens past the threshold.
+    diplomacy = None
+    faction_names = set(known_factions(conn, save_id))
+    if aggressor in faction_names and defender in faction_names:
+        diplomacy = report_raid(ctx, conn, save_id, aggressor, defender,
+                                casualties_target=len(casualties))
     return {"incident_id": incident_id, "verdict": verdict, "aftermath": aftermath,
-            "world_event_id": event_id}
+            "world_event_id": event_id, "diplomacy": diplomacy}
 
 # ---------------------------------------------------------------------------
 # Dispatch
@@ -1376,6 +1754,72 @@ def _dispatch_post(http, ctx, path, payload):
             conn.close()
         return True
 
+    if path == "/api/events/evolve":
+        if not save_id:
+            http._send_json(400, {"error": "save_id is required"})
+            return True
+        conn = ctx.get_db_connection()
+        try:
+            with conn:
+                transitions = events_evolve(ctx, conn, save_id, payload.get("now"))
+            http._send_json(200, {"ok": True, "transitions": transitions})
+        finally:
+            conn.close()
+        return True
+
+    if path == "/api/diplomacy/seed":
+        # FACTION ROSTER FEED (Chronicle Test Gate 2): the mod posts the game's
+        # REAL factions + player friendliness (0..100). Seeds entities and the
+        # player↔faction relations so agent rounds have actual players.
+        player = payload.get("player_faction")
+        factions = payload.get("factions") or []
+        if not save_id or not player or not factions:
+            http._send_json(400, {"error": "save_id, player_faction and factions are required"})
+            return True
+        conn = ctx.get_db_connection()
+        try:
+            with conn:
+                ensure_entity(conn, save_id, "faction", player)
+                seeded = []
+                for f in factions:
+                    name = (f.get("name") or "").strip()
+                    if not name:
+                        continue
+                    ensure_entity(conn, save_id, "faction", name)
+                    rel = get_relation(conn, save_id, player, name)
+                    # game friendliness 0..100 → relation -1..1 (50 = neutral)
+                    relation = max(-1.0, min(1.0, (float(f.get("friendliness", 50)) - 50.0) / 50.0))
+                    state = "war" if relation <= -0.6 else (
+                        "alliance" if relation >= 0.9 else "peace")
+                    conn.execute("UPDATE faction_relations SET relation=?, state=?, updated_at=? WHERE id=?",
+                                 (relation, state, _now(), rel["id"]))
+                    seeded.append({"name": name, "relation": round(relation, 2), "state": state})
+                _log_diplomacy(conn, save_id, "world", "roster_seeded", player,
+                               f"The known powers of the region: {', '.join(s['name'] for s in seeded)}.")
+            http._send_json(200, {"ok": True, "seeded": seeded})
+        finally:
+            conn.close()
+        return True
+
+    if path == "/api/diplomacy/raid":
+        # GROUND-TRUTH FEED from the game: a real raid happened. Worsens
+        # relations, records losses, escalates to declared war past threshold.
+        raider = payload.get("raider")
+        target = payload.get("target")
+        if not save_id or not raider or not target:
+            http._send_json(400, {"error": "save_id, raider and target are required"})
+            return True
+        conn = ctx.get_db_connection()
+        try:
+            with conn:
+                result = report_raid(ctx, conn, save_id, raider, target,
+                                     int(payload.get("casualties_raider") or 0),
+                                     int(payload.get("casualties_target") or 0))
+            http._send_json(200, result)
+        finally:
+            conn.close()
+        return True
+
     if path == "/api/diplomacy/round":
         if not save_id:
             http._send_json(400, {"error": "save_id is required"})
@@ -1397,6 +1841,20 @@ def _dispatch_post(http, ctx, path, payload):
                     ctx, conn, save_id, payload.get("settler_id"), payload.get("partner_id"),
                     payload.get("interaction"), payload.get("tradition") or "")
             http._send_json(200 if result.get("ok") else 400, result)
+        finally:
+            conn.close()
+        return True
+
+    if path == "/api/romance/tick":
+        # Full autonomous romance pass: decay + bond formation + milestones.
+        if not save_id:
+            http._send_json(400, {"error": "save_id is required"})
+            return True
+        conn = ctx.get_db_connection()
+        try:
+            with conn:
+                result = romance_autonomous_tick(ctx, conn, save_id)
+            http._send_json(200, {"ok": True, **result})
         finally:
             conn.close()
         return True
@@ -1453,8 +1911,12 @@ def _dispatch_post(http, ctx, path, payload):
         conn = ctx.get_db_connection()
         try:
             with conn:
+                season = (payload.get("season") or "winter").lower()
                 changes = disease_tick(ctx, conn, save_id)
-            http._send_json(200, {"ok": True, "changes": changes})
+                spread = disease_spread(ctx, conn, save_id, season)
+                onsets = seasonal_onset(ctx, conn, save_id, season)
+            http._send_json(200, {"ok": True, "changes": changes,
+                                  "spread": spread, "onsets": onsets, "season": season})
         finally:
             conn.close()
         return True

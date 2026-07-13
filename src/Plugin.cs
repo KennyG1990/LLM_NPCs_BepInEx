@@ -137,6 +137,11 @@ namespace GoingMedieval.LLM_NPCs
 
         private void Update()
         {
+            // FREEZE DETECTOR heartbeat — every frame, first thing (Ken 2026-07-12:
+            // "the game is freezing constantly"). The watchdog thread attributes
+            // any stall >2s to whatever phase was running.
+            FreezeDetector.Beat();
+
             // Autonomy is the operating mode for this build (the villagers run the
             // colony themselves). An older/stale config could pin EnableFullAutonomy
             // off; correct it ONCE at startup, then respect the in-panel toggle.
@@ -155,13 +160,17 @@ namespace GoingMedieval.LLM_NPCs
 
             // REAL-TIME (game time may be frozen by the very screens this
             // dismisses — Dowsby's famine fell in frozen time, 2026-07-12).
+            FreezeDetector.SetPhase("mod:recap-dismisser");
             RecapDismisser.Tick();
             // Blocking EVENT dialogs also freeze game time — the leader must be
             // able to answer them from real time (same deadlock class).
+            FreezeDetector.SetPhase("mod:event-pump");
             EventInteractor.RealTimePump();
 
+            FreezeDetector.SetPhase("mod:dialogue-ui");
             DialogueManager?.Update();
             MenuIntegration?.Update();
+            FreezeDetector.Clear();   // mod frame work done — stalls after this are the ENGINE's
             
             // Social systems update
             ChatBubbleManager?.Update();
@@ -715,6 +724,13 @@ namespace GoingMedieval.LLM_NPCs
             // Find all validated settlers via GameBridge (per-second; not logged
             // to avoid flooding the log window and burying builder telemetry).
             var settlers = GameBridge.GetValidatedSettlers();
+
+            // SCHEDULE SANITIZER — FIRST, at per-second cadence (native crash
+            // 2026-07-12: saves poisoned with RoleJob Work-hours by the old
+            // mapper spin the goal loop on CURRENT_HOUR None from LOAD-IN and
+            // crash within minutes; ColonyBuilder's 12s tick loses that race).
+            // ApplyAll is internally once-per-settler-per-session — cheap.
+            if (settlers.Count > 0) ScheduleRouter.ApplyAll(settlers);
 
             TryStartColonyInfluence(settlers);
 

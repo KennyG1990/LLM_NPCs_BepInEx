@@ -1,0 +1,204 @@
+{
+ "situation": {
+  "seed": 7,
+  "stage": 3,
+  "pop": 10,
+  "biome": "valley",
+  "w": 120,
+  "h": 120
+ },
+ "plan": [
+  {
+   "kind": "plaza",
+   "rect": [
+    23,
+    51,
+    9,
+    9
+   ]
+  },
+  {
+   "kind": "great_hall",
+   "rect": [
+    11,
+    57,
+    10,
+    7
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "church",
+   "rect": [
+    29,
+    62,
+    6,
+    9
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "graveyard",
+   "rect": [
+    0,
+    77,
+    9,
+    9
+   ]
+  },
+  {
+   "kind": "house",
+   "rect": [
+    16,
+    46,
+    6,
+    5
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    7,
+    47,
+    7,
+    7
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    20,
+    74,
+    6,
+    9
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    17,
+    36,
+    9,
+    8
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    21,
+    66,
+    5,
+    5
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "workshop",
+   "rect": [
+    33,
+    48,
+    5,
+    6
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "butcher+smokehouse",
+   "rect": [
+    29,
+    76,
+    4,
+    5
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "barn",
+   "rect": [
+    29,
+    31,
+    7,
+    5
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "field",
+   "rect": [
+    4,
+    90,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "field",
+   "rect": [
+    37,
+    79,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "field",
+   "rect": [
+    49,
+    81,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "field",
+   "rect": [
+    13,
+    75,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "field",
+   "rect": [
+    12,
+    80,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "stockpile_yard",
+   "rect": [
+    28,
+    46,
+    5,
+    5
+   ]
+  }
+ ]
+}

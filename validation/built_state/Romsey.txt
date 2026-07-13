@@ -1,0 +1,6 @@
+home.x=84
+home.y=7
+home.z=132
+village.cx=63
+village.cy=6
+village.cz=113

@@ -1,0 +1,80 @@
+{
+ "phase": 3,
+ "style": {
+  "density": "town",
+  "walls": "stone_integrated",
+  "layout": "grid",
+  "verticality": "high",
+  "farms": "outside",
+  "keep": true,
+  "name": "martial hill clan (tight stone, towers)"
+ },
+ "new_work": [
+  {
+   "kind": "market",
+   "rect": [
+    60,
+    89,
+    7,
+    5
+   ],
+   "floors": 2,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "church",
+   "rect": [
+    60,
+    65,
+    6,
+    9
+   ],
+   "floors": 2,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "infirmary",
+   "rect": [
+    61,
+    76,
+    5,
+    4
+   ],
+   "floors": 2,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "wall_ring",
+   "cells": 159,
+   "id": "wood_wall_element"
+  },
+  {
+   "kind": "towers",
+   "count": 4
+  }
+ ]
+}

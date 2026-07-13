@@ -1,0 +1,75 @@
+{
+ "phase": 1,
+ "new_work": [
+  {
+   "kind": "research",
+   "rect": [
+    72,
+    89,
+    5,
+    5
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    51,
+    93,
+    6,
+    8
+   ],
+   "floors": 1,
+   "cellar_depth": 1,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "cellar": {
+    "dig_levels": 1,
+    "stair_shaft": true,
+    "full_wall_ring": true,
+    "beam_every": 3
+   }
+  },
+  {
+   "kind": "house",
+   "rect": [
+    80,
+    69,
+    6,
+    7
+   ],
+   "floors": 1,
+   "cellar_depth": 1,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "cellar": {
+    "dig_levels": 1,
+    "stair_shaft": true,
+    "full_wall_ring": true,
+    "beam_every": 3
+   }
+  },
+  {
+   "kind": "field",
+   "rect": [
+    49,
+    67,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "gate_chokepoint_stub",
+   "cell": [
+    68,
+    108
+   ]
+  }
+ ]
+}

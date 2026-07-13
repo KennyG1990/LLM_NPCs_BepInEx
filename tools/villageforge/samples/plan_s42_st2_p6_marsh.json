@@ -1,0 +1,150 @@
+{
+ "situation": {
+  "seed": 42,
+  "stage": 2,
+  "pop": 6,
+  "biome": "marsh",
+  "w": 120,
+  "h": 120
+ },
+ "plan": [
+  {
+   "kind": "plaza",
+   "rect": [
+    90,
+    47,
+    7,
+    7
+   ]
+  },
+  {
+   "kind": "great_hall",
+   "rect": [
+    79,
+    55,
+    10,
+    7
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    68,
+    52,
+    8,
+    7
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    99,
+    52,
+    5,
+    5
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    109,
+    42,
+    7,
+    7
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "workshop",
+   "rect": [
+    102,
+    43,
+    5,
+    6
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "butcher+smokehouse",
+   "rect": [
+    95,
+    63,
+    4,
+    5
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "barn",
+   "rect": [
+    85,
+    65,
+    7,
+    5
+   ],
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "field",
+   "rect": [
+    91,
+    75,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "field",
+   "rect": [
+    111,
+    78,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "field",
+   "rect": [
+    99,
+    73,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "field",
+   "rect": [
+    103,
+    64,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "stockpile_yard",
+   "rect": [
+    85,
+    42,
+    5,
+    5
+   ]
+  }
+ ]
+}

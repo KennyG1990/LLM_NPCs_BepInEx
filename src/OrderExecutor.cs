@@ -120,14 +120,27 @@ namespace GoingMedieval.LLM_NPCs
                         note = "returned to work";
                         break;
                     case "move_to":
-                        DecisionExecutor.Execute(settler, MakeDecision("explore", null,
-                            $"Player order: head toward {target}"));
-                        note = $"moving out (explore) toward '{target}' - direct pathing not exposed by game, approximated";
+                        // REAL movement (MovementOrders, 2026-07-12): the game's
+                        // own MoveOrder channel. Target resolution: "home"/empty
+                        // → colony home; "x,z" → explicit cell.
+                        {
+                            if (ResolveTargetCell(target, out int mx, out int my, out int mz) &&
+                                MovementOrders.TryMoveTo(settler.gameObject, mx, my, mz, 2f))
+                                note = $"MoveOrder issued toward '{target}' ({mx},{mz}) — walking validates live";
+                            else
+                                failure = $"move_to '{target}': {MovementOrders.LastResult}";
+                        }
                         break;
                     case "patrol":
-                        DecisionExecutor.Execute(settler, MakeDecision("defend", null,
-                            $"Player order: patrol {target}"));
-                        note = $"taking defensive patrol stance near '{target}'";
+                        // Patrol = MoveOrder with a WIDE guard radius (the game's
+                        // guard mode holds the area after arriving).
+                        {
+                            if (ResolveTargetCell(target, out int px, out int py, out int pz) &&
+                                MovementOrders.TryMoveTo(settler.gameObject, px, py, pz, 10f))
+                                note = $"patrol order issued around '{target}' ({px},{pz}) guard r=10";
+                            else
+                                failure = $"patrol '{target}': {MovementOrders.LastResult}";
+                        }
                         break;
                     case "attack_target":
                         DecisionExecutor.Execute(settler, MakeDecision("defend", null,
@@ -135,12 +148,29 @@ namespace GoingMedieval.LLM_NPCs
                         note = $"drafted to defensive combat stance against '{target}'";
                         break;
                     case "hold_position":
-                        DecisionExecutor.Execute(settler, MakeDecision("rest", null,
-                            "Player order: hold position"));
-                        note = "holding (rest in place)";
+                        // Hold = MoveOrder to the settler's OWN current cell with
+                        // a small guard radius: stand fast, right here.
+                        {
+                            var node = StockpilePlacer.SettlerNode(settler.gameObject);
+                            if (node != null &&
+                                MovementOrders.TryMoveTo(settler.gameObject, node[0], node[1], node[2], 3f))
+                                note = "holding position (guard r=3 at own cell)";
+                            else
+                                failure = $"hold_position: {MovementOrders.LastResult}";
+                        }
+                        break;
+                    case "return_to_player":
+                        // No player avatar in this game — "return" = come home.
+                        {
+                            if (ResolveTargetCell("home", out int rx, out int ry, out int rz) &&
+                                MovementOrders.TryMoveTo(settler.gameObject, rx, ry, rz, 2f))
+                                note = "returning to the colony home";
+                            else
+                                failure = $"return: {MovementOrders.LastResult}";
+                        }
                         break;
                     case "follow_player":
-                        failure = "follow_player not yet supported by the game bridge";
+                        failure = "no player avatar exists in this game — use move_to/hold/patrol";
                         break;
                     case "prioritize_construction":
                         DecisionExecutor.Execute(settler, MakeDecision("prioritize_construction",
@@ -213,6 +243,38 @@ namespace GoingMedieval.LLM_NPCs
                     return settler;
             }
             return null;
+        }
+
+        /// <summary>Resolve an order's target text to a grid cell. Known names
+        /// (home/house/village/plaza/empty) anchor on colony state; "x,z"
+        /// parses explicit coordinates. Unresolvable targets return false —
+        /// the step fails HONESTLY instead of walking somewhere random.</summary>
+        private static bool ResolveTargetCell(string target, out int x, out int y, out int z)
+        {
+            x = y = z = 0;
+            var t = (target ?? "").Trim().ToLowerInvariant();
+            if (t == "" || t == "home" || t == "camp" || t == "the settlement" || t == "settlement")
+            {
+                if (!ColonyHome.Established) return false;
+                x = ColonyHome.X; y = ColonyHome.Y; z = ColonyHome.Z;
+                return true;
+            }
+            if (t == "house" || t == "the house" || t == "village" || t == "plaza" || t == "the square")
+            {
+                var hc = HouseBuilder.HouseCenter;
+                if (hc != null) { x = hc[0]; y = hc[1]; z = hc[2]; return true; }
+                if (ColonyHome.Established) { x = ColonyHome.X; y = ColonyHome.Y; z = ColonyHome.Z; return true; }
+                return false;
+            }
+            var parts = t.Split(',');
+            if (parts.Length >= 2 && int.TryParse(parts[0].Trim(), out var px)
+                                  && int.TryParse(parts[parts.Length - 1].Trim(), out var pz))
+            {
+                x = px; z = pz;
+                y = ColonyHome.Established ? ColonyHome.Y : 5;
+                return true;
+            }
+            return false;
         }
 
         private static LLMDecision MakeDecision(string action, Dictionary<string, object> parameters, string reasoning)

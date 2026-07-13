@@ -81,6 +81,17 @@ namespace GoingMedieval.LLM_NPCs
             PlanManager.Reset();
             HouseArchitect.Reset();
             VillageLayout.Reset();
+            DefenseBuilder.Reset();
+            GameTruthBridge.Reset();
+            // CROSS-VILLAGE STALENESS (caught live 2026-07-12: Ken's new game
+            // showed Dolgellau's worldmap stats verbatim — the site planner
+            // scored the NEW map against the OLD village's terrain and reported
+            // "NO site fits a 12x12 pad" on unscanned ground). These three keep
+            // once-per-session caches and had no Reset():
+            WorldMap.LastScanTicks = 0;        // → full rescan on the new map
+            WorldSense.LastGrid = "";          // → re-rasterize home region
+            HouseSitePlanner.Done = false;     // → fresh leader siteplan…
+            HouseSitePlanner.HasSite = false;  //   …against the FRESH worldmap
         }
 
         private static object GetActiveVillage()

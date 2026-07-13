@@ -24,9 +24,13 @@ namespace GoingMedieval.LLM_NPCs
         public static string LastResult = "(idle)";
         private static bool _dumped = false, _doneThisSession = false;
 
-        // Priority list — substring matches against node ids (refine once
-        // research_ids.txt gives the real ids; stairs/underground first per Ken).
-        private static readonly string[] Needs = { "stair", "under", "construction", "architecture", "farm", "agri", "cook", "storage" };
+        // Priority list — substring matches against node ids. Canon order
+        // (Ken's v1.1.x player guide, 2026-07-12): ARCHITECTURE FIRST — it
+        // gates beams (15 wood, wall-to-wall), and beams gate every upper
+        // storey AND safe cellar ceilings. Then agriculture (the sustainable
+        // food leg) and tailoring (flimsy starting clothes carry a standing
+        // mood debuff). Stairs/underground follow for the vertical program.
+        private static readonly string[] Needs = { "architecture", "agri", "farm", "tailor", "stair", "under", "construction", "cook", "storage" };
 
         public static void Reset() { _doneThisSession = false; LastResult = "(idle)"; }
 

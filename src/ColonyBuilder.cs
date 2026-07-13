@@ -73,11 +73,13 @@ namespace GoingMedieval.LLM_NPCs
                 // FIRST: detect a world (re)load and reset ALL per-session builder
                 // state before acting on stale flags — otherwise every reload
                 // re-places a house + stockpile into the save (the bloat bug).
+                Phase("built-state");
                 BuiltState.OnTick();
 
                 bool autonomyOn = AutonomyManager.Instance.IsFullAutonomyEnabled;
                 var live = settlers?.Where(s => s != null && s.gameObject != null).ToList();
                 int pop = live?.Count ?? 0;
+                Phase("census");
 
                 // ── Read Model: census the world (same game truth we place against) ──
                 // VERIFIED census: counts only stockpiles the manager confirms exist
@@ -95,6 +97,7 @@ namespace GoingMedieval.LLM_NPCs
                 // Refresh the colony-level PRIORITY alerts (food/storage/beds/cook)
                 // every tick so the Player2 LLM decisions see the settlement's urgent
                 // needs — computed even when autonomy is off (it feeds decision-making).
+                Phase("alerts");
                 ColonyAlerts.Compute(pop);
 
                 // ── CRISIS REACTOR (#37, Ken: "they all died because of the
@@ -102,20 +105,40 @@ namespace GoingMedieval.LLM_NPCs
                 // the system can see is a warning the system must ACT on.
                 // Starvation inverts the priority hierarchy: caps lift, radius
                 // stretches, every settler drops art/research for food work.
+                // Threshold from the player-competence canon (Ken's v1.1.x guide,
+                // 2026-07-12): a settler needs ~12 raw food/DAY (one meal = 12
+                // raw). The old pop*6 fired at HALF a day's need — malnutrition
+                // was already degrading work speed by then. One full day's
+                // buffer is the competent-player line.
                 bool crisis = pop > 0 && ColonyAlerts.LastNutrition >= 0 &&
-                              ColonyAlerts.LastNutrition < pop * 6;
+                              ColonyAlerts.LastNutrition < pop * 12;
                 FoodGatherer.Crisis = crisis;
+                Phase("crisis-route");
                 if (crisis)
                 {
                     LastCensus = "⚠CRISIS(food) " + LastCensus;
                     JobRouter.CrisisRouteAll(live);
                 }
-                else JobRouter.ExitCrisis();
+                else
+                {
+                    JobRouter.ExitCrisis();
+                    // WARNING TIER (playbook §2): under a 3-day buffer, lean the
+                    // whole colony toward food work — gently, nothing suspended.
+                    bool foodWarning = pop > 0 && ColonyAlerts.LastNutrition >= 0 &&
+                                       ColonyAlerts.LastNutrition < pop * 36;
+                    if (foodWarning)
+                    {
+                        LastCensus = "⚠FOOD-LOW " + LastCensus;
+                        JobRouter.FoodPressureAll(live);
+                    }
+                    else JobRouter.ExitFoodPressure();
+                }
 
                 // #31 HOUSING DIRECTOR: when the colony outgrows the shack, THE
                 // ARCHITECT (LLM) designs the village housing — one common house
                 // or individual houses per villager — and the queue is built one
                 // building at a time. Deterministic longhouse only as fallback.
+                Phase("housing-director");
                 HouseBuilder.TargetPop = pop;
                 // director keys on NEED, not a magic pop number (the pop>=5 gate
                 // blocked the architect for 4-settler Dolgellau) — any colony
@@ -164,6 +187,7 @@ namespace GoingMedieval.LLM_NPCs
                 // Read the SAME per-blueprint blockers the player's STATS panel
                 // shows (unreachable / no resources / no skilled worker) so the
                 // colony KNOWS why something isn't getting built.
+                Phase("blueprint-scan");
                 BlueprintDiagnostics.Scan();
                 if (BlueprintDiagnostics.Blocked > 0)
                     LLMNPCsPlugin.LogToFile($"[ColonyBuilder] blueprints: {BlueprintDiagnostics.Current}");
@@ -172,6 +196,7 @@ namespace GoingMedieval.LLM_NPCs
                 // job race — pending ≥3 ticks → best-Construction settler gets
                 // Construct prio 1 (released when the queue clears). Fletcher
                 // sat unbuilt for hours with Construct at 3/4/4 (eyes-on 18:50).
+                Phase("build-pressure");
                 JobRouter.EnsureBuildPressure(live, BlueprintDiagnostics.Pending);
 
                 // ── REACT to blueprint blockers (read->decide->act loop) ──
@@ -190,6 +215,7 @@ namespace GoingMedieval.LLM_NPCs
                     var live0 = settlers.FirstOrDefault(s => s != null && s.gameObject != null);
                     if (live0 != null)
                     {
+                        Phase("react-wood-scan");
                         // ELASTIC RADIUS (needs beat leash): local trees deplete
                         // on a 2%-forest map (22:38: 7 scanned, 0 designated,
                         // blueprints stuck NO-RESOURCES). Prefer near; when the
@@ -205,53 +231,67 @@ namespace GoingMedieval.LLM_NPCs
 
                 // OVERNIGHT AUTONOMY: events auto-pause the game; when the colony
                 // is handed to the AI it unpauses itself (raid -> normal speed).
+                Phase("autospeed");
                 AutoSpeed.EnsureRunning();
 
                 // COMPARATIVE ADVANTAGE: route each settler's job priorities by
                 // skill + passion/resentment (once per settler per session).
+                Phase("job-route");
                 JobRouter.RouteAll(live);
 
                 // JOB IMPLIES GEAR: a hunter with no ranged weapon can't hunt
                 // (a fatal link in the starvation death-chain). Order capable
                 // hunters to equip a spare bow/sling from the stockpile.
+                Phase("equip");
                 EquipManager.TryEquipHunters(live);
 
                 // WEAPON PIPELINE OWNER: when hunters lack a ranged weapon and
                 // none exists to equip, walk the craft chain (station → order →
                 // ProductionState → skill gate) and react — the silent
                 // NO-SKILLED-WORKER stall contributed to both colony wipes.
+                Phase("weapon-chain");
                 WeaponChain.Tick(live);
 
                 // PROGRAMMATIC SAVE: consume validation/save_request.txt →
                 // game's own AutosaveCurrentVillage (main thread, UI-free).
+                Phase("save-guard");
                 SaveGuard.Tick();
 
                 // #17 THE PLANNER: LLM strategist writes a bounded plan against
                 // the verb menu; deterministic executor runs one step per beat.
                 // Runs AFTER the survival floor — a plan never overrides crisis.
+                Phase("plan-manager");
                 PlanManager.Tick(live);
 
                 // WORK/LIFE BALANCE: healthy schedule (8h sleep, 8h work,
                 // guaranteed leisure) — exhausted-awake-at-20h fix.
+                Phase("schedule");
                 ScheduleRouter.ApplyAll(live);
 
                 // STOCKPILE HYGIENE: waste/carcass only allowed in the zone
                 // FARTHEST from home — haulers get exactly one refuse target
                 // (poop and bones leave the pantry). Dump-first API groundwork
                 // stays for deeper zone specialization later.
+                Phase("zoner");
                 StockpileZoner.Tick();
                 if (ColonyHome.Established) StockpileZoner.Apply(ColonyHome.X, ColonyHome.Z);
 
                 // WORLDSENSE (Planner leg 1): rasterize the home region once per
                 // session for validation — becomes the Player2 planning input.
                 if (ColonyHome.Established && WorldSense.LastGrid.Length == 0)
+                {
+                    Phase("worldsense");
                     WorldSense.Rasterize(ColonyHome.X, ColonyHome.Y, ColonyHome.Z);
+                }
 
                 // WORLDMAP (full 3D spatial awareness): scan the ENTIRE map once
                 // per session (heavy — a single full GridSpaceData pass; NOT hot
                 // path). Substrate for the site-scorer / build-anywhere planner.
                 if (WorldMap.LastScanTicks == 0)
+                {
+                    Phase("worldmap-scan");
                     LLMNPCsPlugin.LogToFile("[ColonyBuilder] " + WorldMap.Scan());
+                }
 
                 // Fix the colony HOME waypoint once (settler-cluster centroid). All
                 // placement + tree designation then anchor here so the village stays
@@ -259,6 +299,7 @@ namespace GoingMedieval.LLM_NPCs
                 // site plan — PlanOnce with no home means NO LEASH (live bug: a
                 // reload ran PlanOnce first, homeX=-1, leader picked a site 84
                 // tiles out and the camp ping-ponged, orphaning a campfire).
+                Phase("home-establish");
                 if (!ColonyHome.Established) ColonyHome.Establish(live);
 
                 // LEADER-VOICE SITE PLAN: the elected leader (LLM) says WHERE the
@@ -269,7 +310,10 @@ namespace GoingMedieval.LLM_NPCs
                 // phantom site that misleads the camp-mover).
                 if (ColonyHome.Established && !HouseSitePlanner.Done &&
                     WorldMap.LastScanTicks != 0 && !BuiltState.HouseComplete)
+                {
+                    Phase("site-planner");
                     HouseSitePlanner.PlanOnce(live);
+                }
 
                 // ── COHERENCE (#32 slice 2, Ken: "they build their house a mile
                 // away from their stockpile... they stop doing anything"): when
@@ -306,6 +350,7 @@ namespace GoingMedieval.LLM_NPCs
                 // ── P0: SURVIVAL UNBLOCK — allow the colony's forbidden ground
                 // food/supplies so the hauling AI can store them and settlers can
                 // eat. Runs every tick; idempotent (already-allowed piles are skipped).
+                Phase("unforbid");
                 int allowed = ResourceUnforbidder.UnforbidAll();
                 if (allowed > 0)
                     LLMNPCsPlugin.LogToFile($"[ColonyBuilder] {ResourceUnforbidder.LastResult}");
@@ -316,21 +361,31 @@ namespace GoingMedieval.LLM_NPCs
 
                 // EVENT INTERACTOR groundwork (#34): one-shot type scan of the
                 // story/event/incident system → validation/event_api.txt.
+                Phase("event-scan");
                 GameApiScanner.ScanEventSystem();
 
                 // EVENT INTERACTOR (#34): read game-injected events, let the
                 // leader LLM answer the choice, apply on this main thread.
                 // Cockhamsted died because nobody was reading these.
+                Phase("event-interactor");
                 EventInteractor.Tick();
 
                 // DEATH HISTORY (#27, doc 08): roster diff — when a settler
                 // dies, write their chronicle and give every survivor the
                 // memory of the loss.
+                Phase("death-chronicler");
                 DeathChronicler.Tick(live);
+
+                // GAME-TRUTH BRIDGE: the mod is the heartbeat for the dashboard's
+                // P6/P7/P9 simulations (diplomacy rounds, romance decay, disease
+                // ticks) and feeds them real game truth (season). Fire-and-forget.
+                Phase("truth-bridge");
+                GameTruthBridge.Tick();
 
                 // ── P0.5: GATHER WOOD — designate nearby trees for chopping so the
                 // settlers have MATERIALS to construct the blueprints. Without wood
                 // they stand idle next to unbuilt walls. Bounded (won't clear-cut).
+                Phase("wood-scan");
                 int trees = WoodGatherer.DesignateTreesNear(live[0].gameObject, 14, 8);
                 if (trees > 0) LLMNPCsPlugin.LogToFile($"[ColonyBuilder] wood: {WoodGatherer.LastResult}");
 
@@ -339,6 +394,7 @@ namespace GoingMedieval.LLM_NPCs
                 // starving. Bounded to home radius + per-session caps.
                 if (ColonyHome.Established)
                 {
+                    Phase("food-scan");
                     // Crisis: venture out — triple the food-search radius (#37).
                     var food = FoodGatherer.ProduceFoodNear(ColonyHome.X, ColonyHome.Y, ColonyHome.Z,
                         FoodGatherer.Crisis ? ColonyHome.WorkRadius * 3 : ColonyHome.WorkRadius);
@@ -349,6 +405,7 @@ namespace GoingMedieval.LLM_NPCs
                 // Managers not ready yet (save still loading) — wait, don't act.
                 if (stockpiles < 0) { LastAction = "waiting for game (stockpile mgr not ready)"; return; }
 
+                Phase("pick-builder");
                 var builder = PickBuilder(live);
 
                 // ── Strategic decision: ONE build per tick, highest priority first ──
@@ -364,10 +421,12 @@ namespace GoingMedieval.LLM_NPCs
                 bool storageFull = ResourceUnforbidder.LastTotal > 80 && stockpiles < 4;
                 // COHERENCE (#32): storage must exist AT HOME — a stockpile 100
                 // tiles away at the abandoned camp doesn't count as a pantry.
+                Phase("storage-athome-scan");
                 bool storageAtHome = !ColonyHome.Established ||
                     StockpilePlacer.AnyStockpileNear(ColonyHome.X, ColonyHome.Z, ColonyHome.WorkRadius);
                 if ((stockpiles == 0 || storageFull || !storageAtHome) && _stockpilesPlaced < MaxStockpiles)
                 {
+                    Phase("storage-place");
                     var r = StockpilePlacer.TryPlaceStockpileNear(builder.gameObject, 4);
                     Record(!storageAtHome ? "STORAGE-AT-HOME" : storageFull ? "STORAGE-EXPAND" : "STORAGE", r, ref _stockpilesPlaced);
                     return;
@@ -375,13 +434,35 @@ namespace GoingMedieval.LLM_NPCs
 
                 // Priority 2: a COOKING STATION (camp_fire) so raw food becomes
                 // meals — settlers can't eat cooked meals without one.
+                Phase("cook-athome-scan");
                 bool cookAtHome = !ColonyHome.Established ||
                     StockpilePlacer.AnyBuildingNear(CookId, ColonyHome.X, ColonyHome.Z, ColonyHome.WorkRadius);
                 if (((cookfires >= 0 && cookfires < 1) || !cookAtHome) && _cookPlaced < 1)
                 {
+                    Phase("cook-place");
                     var r = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, CookId);
                     Record(!cookAtHome ? "COOKFIRE-AT-HOME" : "COOKFIRE", r, ref _cookPlaced);
                     return;
+                }
+
+                // Priority 2.5: BUTCHERING TABLE — hunted corpses are NOT food
+                // until butchered (production id 'meat'); the colony starved
+                // beside a stockpile full of animal corpses because this link
+                // was missing from the survival chain (Ken, eyes-on 2026-07-12).
+                // The campfire's 'meal' order sits ingredient-less without it.
+                Phase("butcher-count");
+                int butcher = StockpilePlacer.CountBuildings("butchering_table");
+                if (butcher == 0 && !BuiltState.SkillBlocked("butchering_table"))
+                {
+                    Phase("butcher-place");
+                    var br = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, "butchering_table");
+                    int d3 = 0; Record("BUTCHER-TABLE", br, ref d3);
+                    return;
+                }
+                if (butcher > 0)
+                {
+                    Phase("production-butcher");
+                    ProductionPlanner.Tick("butchering_table", "meat");
                 }
 
                 // Priority 3: BEDS placed INSIDE the house rooms (on the interior
@@ -389,6 +470,7 @@ namespace GoingMedieval.LLM_NPCs
                 // house footprint first so interior cells exist to place them in.
                 if (beds >= 0 && beds < pop && _bedsPlaced < pop)
                 {
+                    Phase("house-plan+beds");
                     if (!HouseBuilder.IsPlanned) HouseBuilder.Plan(builder.gameObject);
                     // Beds go in DORM/BEDROOM cells (v2 plans purpose-tag them;
                     // legacy plans fall back to all interior cells). Skip cells
@@ -419,6 +501,7 @@ namespace GoingMedieval.LLM_NPCs
                 // world-truth idempotent (skips cells already holding a bed).
                 if (HouseBuilder.Complete && HouseBuilder.IsPlanned && _bedsInsidePlaced < pop)
                 {
+                    Phase("bed-movein-scan");
                     int cap = System.Math.Min(pop, HouseBuilder.InteriorCells.Count);
                     int inside = 0; int[] freeCell = null;
                     foreach (var c in HouseBuilder.InteriorCells)
@@ -438,6 +521,7 @@ namespace GoingMedieval.LLM_NPCs
                 // one piece per tick, once survival needs (storage/cook/beds) are met.
                 if (!HouseBuilder.Complete)
                 {
+                    Phase("house-step");
                     var r = HouseBuilder.Step(builder.gameObject);
                     LLMNPCsPlugin.LogToFile($"[ColonyBuilder] {r}");
                     return;
@@ -448,9 +532,11 @@ namespace GoingMedieval.LLM_NPCs
                 // tech). The "Research table missing" alert sat unactioned for
                 // days; a forward-planning colony builds it as soon as shelter
                 // exists. Census-gated like the cookfire (id: research_table).
+                Phase("research-count");
                 int research = StockpilePlacer.CountBuildings(TableId);
                 if (research == 0 && !BuiltState.SkillBlocked(TableId))
                 {
+                    Phase("research-place");
                     var rr = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, TableId);
                     int dummy = 0; Record("RESEARCH-TABLE(basic)", rr, ref dummy);
                     return;
@@ -459,33 +545,92 @@ namespace GoingMedieval.LLM_NPCs
                 // settlers, 'Hunter lacks ranged weapon' — hunting REQUIRES a
                 // ranged weapon). Chain: fletchers_table -> craft sling+bow ->
                 // hunters (Marksman-passionate get Hunting prio 1) can feed us.
+                Phase("fletcher-count");
                 int fletcher = StockpilePlacer.CountBuildings("fletchers_table");
                 if (fletcher == 0 && !BuiltState.SkillBlocked("fletchers_table"))
                 {
+                    Phase("fletcher-place");
                     var wr = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, "fletchers_table");
                     int d2 = 0; Record("FLETCHER", wr, ref d2);
                     return;
                 }
                 if (fletcher > 0)
                 {
+                    Phase("production-weapons");
                     ProductionPlanner.Tick("fletchers_table", "sling");
                     ProductionPlanner.Tick("fletchers_table", "short_bow");
                 }
 
+                // Priority 4.55: PRESERVATION (player-competence canon: "smoke
+                // meat... preserved food keeps for months" — stockpile in autumn
+                // or starve in winter; Dowsby died to exactly that). Smokehouse
+                // after the butcher exists; keep smoked_meat queued (id ground-
+                // truthed in production_ids.txt).
+                Phase("smokehouse-count");
+                int smoke = StockpilePlacer.CountBuildings("smokehouse");
+                if (smoke == 0 && butcher > 0 && !BuiltState.SkillBlocked("smokehouse"))
+                {
+                    Phase("smokehouse-place");
+                    var sr = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, "smokehouse");
+                    int d4 = 0; Record("SMOKEHOUSE", sr, ref d4);
+                    return;
+                }
+                if (smoke > 0)
+                {
+                    Phase("production-smoke");
+                    ProductionPlanner.Tick("smokehouse", "smoked_meat");
+                }
+
+                // Priority 4.56: CLOTHES LOOP (canon: the flimsy starting clothes
+                // carry a STANDING mood debuff — "replace ASAP" is stage-1 play).
+                // Sewing station once shelter exists; keep both seasonal sets
+                // queued (ids ground-truthed). Orders sit harmlessly if no
+                // linen/wool yet — the station being idle is the honest signal.
+                Phase("sewing-count");
+                int sew = StockpilePlacer.CountBuildings("sewing_station");
+                if (sew == 0 && HouseBuilder.Complete && !BuiltState.SkillBlocked("sewing_station"))
+                {
+                    Phase("sewing-place");
+                    var cr = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, "sewing_station");
+                    int d5 = 0; Record("SEWING-STATION", cr, ref d5);
+                    return;
+                }
+                if (sew > 0)
+                {
+                    Phase("production-clothes");
+                    ProductionPlanner.Tick("sewing_station", "winter_clothes");
+                    ProductionPlanner.Tick("sewing_station", "summer_clothes");
+                }
+
                 // Table exists -> pick a research project (prerequisite chain:
                 // stairs/underground first, then construction/farming).
+                Phase("research-planner");
                 ResearchPlanner.Tick();
                 // ...and keep production queues filled (empty queue = idle
                 // station): research books ("Chronicle") at the table, meals at
                 // the campfire (ids ground-truthed in production_ids.txt).
+                Phase("production-queues");
                 ProductionPlanner.Tick(TableId, "basic_research_book");
                 ProductionPlanner.Tick(CookId, "meal");
+
+                // Priority 4.65: DEFENSE — palisade ring on the DRY approaches
+                // (canon: first raid within DAYS; raiders attack doors, ignore
+                // walls; water is a moat they won't cross). Only after shelter
+                // stands — walls don't matter if everyone froze in the open.
+                if (HouseBuilder.Complete && ColonyHome.Established)
+                {
+                    Phase("defense");
+                    var dr = DefenseBuilder.Tick(ColonyHome.X, ColonyHome.Y, ColonyHome.Z);
+                    if (dr.Contains("placed this pass") || dr.StartsWith("palisade: COMPLETE"))
+                        LLMNPCsPlugin.LogToFile($"[ColonyBuilder] {dr}");
+                }
 
                 // Priority 4.7: FARM — agriculture researched by the colony's own
                 // hand; a crop field is the sustainable-food leg (hunt/forage
                 // deplete). One 4x4 near home on clear dry ground.
                 if (ColonyHome.Established && !BuiltState.FarmPlaced)
                 {
+                    Phase("farm");
                     var fr = FarmPlanner.Tick(ColonyHome.X, ColonyHome.Y, ColonyHome.Z, ColonyHome.WorkRadius);
                     if (fr.StartsWith("farm: '")) { LLMNPCsPlugin.LogToFile($"[ColonyBuilder] {fr}"); return; }
                 }
@@ -494,6 +639,7 @@ namespace GoingMedieval.LLM_NPCs
                 // (food keeps better underground; stable temperature). One per save.
                 if (ColonyHome.Established && !BuiltState.CellarMarked)
                 {
+                    Phase("cellar");
                     // Cellar may search FARTHER than the work radius — a settler
                     // will walk to the nearest hill for a proper cold cellar.
                     var c = CellarBuilder.DigCellarNear(ColonyHome.X, ColonyHome.Y, ColonyHome.Z, 60);
@@ -501,6 +647,7 @@ namespace GoingMedieval.LLM_NPCs
                     return;
                 }
 
+                Phase("tick-done");
                 LastAction = $"stable {LastCensus}";
             }
             catch (Exception ex)
@@ -509,7 +656,7 @@ namespace GoingMedieval.LLM_NPCs
                 LLMNPCsPlugin.LogToFile($"[ColonyBuilder] {LastAction}");
                 Backoff();
             }
-            finally { WriteStatus(); }
+            finally { WriteStatus(); FreezeDetector.Clear(); }
         }
 
         // Write current status to a file in the mod folder — reliable telemetry
@@ -545,6 +692,7 @@ namespace GoingMedieval.LLM_NPCs
                     $"zoner:  {StockpileZoner.LastResult}\n" +
                     $"deaths: {DeathChronicler.LastResult}\n" +
                     $"save:   {SaveGuard.LastResult}\n" +
+                    $"freeze: {FreezeDetector.LastResult}\n" +
                     $"plan:   {PlanManager.LastResult}\n" +
                     $"alerts: {ColonyAlerts.Current.Replace("\n", " | ")}\n");
             }
@@ -568,6 +716,22 @@ namespace GoingMedieval.LLM_NPCs
                         { "worldmap", WorldMap.LastSummary }, { "siteplan", HouseSitePlanner.LastResult },
                         { "alerts", ColonyAlerts.Current }
                     });
+            }
+            catch { }
+        }
+
+        // FREEZE BREADCRUMB (2026-07-12): three main-thread hangs died silently
+        // inside this tick — the last phase written here names the culprit call
+        // after the fact. Single-line overwrite; ~14 writes per 12s tick is noise
+        // on an SSD and priceless in a post-mortem.
+        private static void Phase(string p)
+        {
+            FreezeDetector.SetPhase("mod:" + p);   // live attribution for the watchdog
+            try
+            {
+                System.IO.File.WriteAllText(
+                    @"F:\DEV_ENV\projects\Mods\Going Medieval\LLM_NPCs_BepInEx\validation\tick_phase.txt",
+                    DateTime.Now.ToString("HH:mm:ss.f") + " " + p);
             }
             catch { }
         }

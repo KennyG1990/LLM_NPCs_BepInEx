@@ -1,4 +1,4 @@
-EVENT SYSTEM TYPE SCAN — 7/12/2026 2:36:02 PM
+EVENT SYSTEM TYPE SCAN — 7/13/2026 1:03:59 AM
 RaidPointOfInterestManager
     Boolean TryGetPointOfInterest(CreatureBase creature, Vector3& point)
     Void Dispose()

@@ -1,27 +1,28 @@
-time: 14:41:48
-census: ⚠CRISIS(food) autonomy=True pop=4 stockpiles=4 cookfire=1 beds=4 house=… [placed sp=0 cook=0 bed=0]
-action: (idle)
-house:  house: no dry, flat, open 12x11 footprint near home (avoided water/slopes)
+time: 01:12:26
+census: autonomy=True pop=4 stockpiles=2 cookfire=1 beds=0 house=… [placed sp=2 cook=1 bed=0]
+action: beds 0/4: interior FULL — house extension needed (#31); no outdoor bed
+house:  house: waiting for worldmap snapshot (siting becomes cheap once scanned)
 architect: (idle)
-unforbid: allowed 0 (forbidden=0 total=97)
-wood:   designated 1 trees (scanned 34, session 1)
-food:   hunt+0 forage+14 (session hunt=0 forage=14)
+unforbid: allowed 0 (forbidden=0 total=202)
+wood:   session cap reached (43)
+food:   hunt+0 forage+0 (session hunt=1 forage=40)
 cellar: (idle)
 research: (idle)
-blueprints: (no blueprints pending)
-production: (idle)
+blueprints: 2 blueprint(s), all buildable
+production: prod: no constructed butchering_table
 farm:   (idle)
-jobs:   jobs: routed 4 settler(s) by skill+passion — Osric Mantel:Culinary(lvl14) Etheldreda Barrie:AnimalHandling(lvl19) Herebryht Ridge:Art(lvl10) Margaria Payne:Culinary(lvl24)  | build-pressure: (idle)
-equip:  equip: no hunter needs a weapon
-weapons: (hunters armed)
+jobs:   jobs: routed 4 settler(s) by skill+passion — Alfred Benson:Art(lvl10) Mariota Ros:Mining(lvl16) Donald Achard:Art(lvl11) Doyle Bowe:Marksman(lvl12)  | build-pressure: Mariota Ros Construct=1 (2 pending)
+equip:  equip: 1 hunter(s) need a ranged weapon — piles seen: ranged 0 (stored 0, ground 0), melee 2 (craft a bow/sling)
+weapons: weapons: no constructed station hosts a ranged recipe (fletcher build priority pending)
 sched:  schedule: applied medieval-9to5 to 4 settler(s)
-budget: 8/hr cap, spent 5/8 (crit 2, 3 reserved) suppressed=0 (crit 0)
-home:   home RESTORED at (90,5,156) from persisted state, radius 22
-worldmap: worldmap: 206x206 x 16 levels, 678976 nodes | surface levels 5..8 | open 12% water 86% forest 0% built 7 rock 0% | tower-cols 73 cellar-capable 42377
+budget: 8/hr cap, spent 5/8 (crit 1, 3 reserved) suppressed=40 (crit 0)
+home:   home fixed at (99,6,99) from 4 settlers, radius 22
+worldmap: worldmap: scanning… pass 2/2, 678976 nodes (slice resumes next tick)
 siteplan: (idle)
 events: (no events)
-zoner:  (idle)
+zoner:  zoner v3: 2 zones roled (food=50 waste=26 ids) | nearest d=0 [redcurrant=Y dungbrick=n] | dump d=8 [redcurrant=n dungbrick=Y]
 deaths: (no deaths; watching 4 settlers)
-save:   save: autosave requested at 14:35:56 (flag consumed)
-plan:   plan: generating…
-alerts: The whole settlement urgently needs (highest priority): | - FOOD IS SCARCE (stored nutrition 12 for 4 settlers) — hunt, forage, or farm and cook meals before anyone starves.
+save:   save: autosave requested at 01:12:01 (periodic bank)
+freeze: 01:12:04 FROZE 2625ms during [engine] (freeze #1)
+plan:   plan#144243 [3✓/1✗/4] complete — Secure immediate food and shelter to stop starvation and keep settlers rested.
+alerts: The whole settlement urgently needs (highest priority): | - Not enough beds (0/4) — build beds inside a roofed house so settlers rest and stay dry. | - 1 hunter(s) have NO ranged weapon — equip a bow/sling from the stockpile, or craft one at a fletcher's table, so they can actually hunt.

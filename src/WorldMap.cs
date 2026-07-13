@@ -127,83 +127,148 @@ namespace GoingMedieval.LLM_NPCs
 
         /// <summary>Read the entire map into the per-column model. Returns a summary.
         /// Bounded/defensive: any missing API => LastSummary explains + returns.</summary>
+        // REVERTED TO MAIN THREAD, SLICED (2026-07-12 ~23:20): the background
+        // thread "cure" was the poison — three native crashes and a 1000x
+        // map-query slowdown (2.5s/query) line up exactly with the bg-scan
+        // builds. Enumerating live game collections off-thread while the main
+        // thread mutates them is the classic Unity/Mono native-crash recipe.
+        // Lesson (banked): NO game-state reads off the main thread, ever —
+        // "pure C# model data" is still the game's mutating state.
+        // The slice keeps the freeze fix honestly: 150ms per tick with a kept
+        // enumerator; the full pass completes across ~a minute of ticks.
         public static string Scan()
         {
-            var t0 = DateTime.UtcNow.Ticks;
+            if (LastScanTicks != 0) return LastSummary;
+            return ScanSlice();
+        }
+
+        /// <summary>SNAPSHOT PRE-FILTER (the freeze-class endgame, 2026-07-12:
+        /// with water-sim contention pricing each live map query in SECONDS,
+        /// budgeted spirals advanced ~one origin per tick and the shack
+        /// fallback was unreachable). Pure array reads from the last completed
+        /// background scan: a FALSE is definitive enough to skip the cell; a
+        /// TRUE still gets live CanPlace/CellIsDry verification. Falls open
+        /// (true) until the first scan completes.</summary>
+        public static bool SnapshotBuildableDry(int x, int y, int z)
+        {
+            if (LastScanTicks == 0) return true;          // no snapshot yet — let live checks decide
+            var cls = Cls; var surf = Surface;
+            if (cls == null || surf == null) return true;
+            if (x < 0 || z < 0 || x >= SizeX || z >= SizeZ) return false;
+            byte c = cls[x, z];
+            if (c == CLS_WATER || c == CLS_BUILT || c == CLS_TREE) return false;
+            return surf[x, z] == y;                       // standable at exactly this level
+        }
+
+        // Sliced-scan state (main thread only; enumerator survives across ticks)
+        private static IEnumerator _sliceEnum;
+        private static IEnumerable _sliceGrid;
+        private static int _slicePass;      // 0 = not started, 1, 2
+        private static long _sliceNodes;
+
+        private static void ResetSlice()
+        { _sliceEnum = null; _sliceGrid = null; _slicePass = 0; _sliceNodes = 0; }
+
+        private static string ScanSlice()
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                var map = GetVillageMap();
-                if (map == null) return LastSummary = "worldmap: no VillageMap (save loading?)";
-                var size = HGet(map, "Size");
-                if (size == null) return LastSummary = "worldmap: no Size";
-                SizeX = VInt(size, "x", "X"); SizeY = VInt(size, "y", "Y"); SizeZ = VInt(size, "z", "Z");
-                var grid = HGet(map, "GridSpaceData") as IEnumerable;
-                if (grid == null || SizeX <= 0 || SizeZ <= 0) return LastSummary = $"worldmap: no GridSpaceData (size {SizeX}x{SizeY}x{SizeZ})";
-
-                Surface = new int[SizeX, SizeZ];
-                Cls = new byte[SizeX, SizeZ];
-                TowerAbove = new byte[SizeX, SizeZ];
-                CellarBelow = new byte[SizeX, SizeZ];
-                for (int ix = 0; ix < SizeX; ix++)
-                    for (int iz = 0; iz < SizeZ; iz++) { Surface[ix, iz] = -1; Cls[ix, iz] = CLS_NONE; }
-
-                // First pass: surface level (highest walkable) + top-of-column class.
-                // Track built/solid per column for tower/cellar counts.
-                long nodes = 0, walkableNodes = 0;
-                foreach (var node in grid)
+                if (_slicePass == 0)
                 {
-                    if (node == null) continue;
-                    nodes++;
-                    var pos = HGet(node, "Position");
-                    if (pos == null) continue;
-                    int x = VInt(pos, "x", "X"), y = VInt(pos, "y", "Y"), z = VInt(pos, "z", "Z");
-                    if (x < 0 || x >= SizeX || z < 0 || z >= SizeZ) continue;
-
-                    bool walk = false; try { walk = Convert.ToBoolean(HGet(node, "IsWalkable") ?? false); } catch { }
-                    bool water = false; try { water = Convert.ToBoolean(HGet(node, "IsWater") ?? false); } catch { }
-                    var dt = HGet(node, "DataType");
-                    bool built = IsBuiltData(dt);
-                    byte voxByte = 0; try { voxByte = Convert.ToByte(HGet(node, "VoxelTypeIdByte") ?? (byte)0); } catch { }
-                    bool solid = voxByte != 0;
-
-                    if (walk) walkableNodes++;
-
-                    // surface = highest walkable level (you can stand there)
-                    if (walk && y > Surface[x, z])
-                    {
-                        Surface[x, z] = y;
-                        bool grass = false; try { grass = Convert.ToBoolean(HGet(node, "IsGrass") ?? false); } catch { }
-                        bool tree = false; try { tree = Convert.ToBoolean(HGet(node, "HasShadowCasterPlants") ?? false); } catch { }
-                        byte c;
-                        if (water) c = CLS_WATER;
-                        else if (built) c = CLS_BUILT;
-                        else if (tree) c = CLS_TREE;
-                        else if (grass || !solid) c = CLS_OPEN;   // grassy/topsoil flat
-                        else c = CLS_ROCK;                        // solid non-grass surface (rock/mountain)
-                        Cls[x, z] = c;
-                    }
+                    var map = GetVillageMap();
+                    if (map == null) return LastSummary = "worldmap: no VillageMap (save loading?)";
+                    var size = HGet(map, "Size");
+                    if (size == null) return LastSummary = "worldmap: no Size";
+                    SizeX = VInt(size, "x", "X"); SizeY = VInt(size, "y", "Y"); SizeZ = VInt(size, "z", "Z");
+                    _sliceGrid = HGet(map, "GridSpaceData") as IEnumerable;
+                    if (_sliceGrid == null || SizeX <= 0 || SizeZ <= 0)
+                        return LastSummary = $"worldmap: no GridSpaceData (size {SizeX}x{SizeY}x{SizeZ})";
+                    Surface = new int[SizeX, SizeZ];
+                    Cls = new byte[SizeX, SizeZ];
+                    TowerAbove = new byte[SizeX, SizeZ];
+                    CellarBelow = new byte[SizeX, SizeZ];
+                    for (int ix = 0; ix < SizeX; ix++)
+                        for (int iz = 0; iz < SizeZ; iz++) { Surface[ix, iz] = -1; Cls[ix, iz] = CLS_NONE; }
+                    _sliceEnum = _sliceGrid.GetEnumerator();
+                    _slicePass = 1;
+                    _sliceNodes = 0;
                 }
-
-                // Second pass: tower/cellar counts relative to each column surface.
-                foreach (var node in grid)
+                while (sw.ElapsedMilliseconds < 150)
                 {
-                    if (node == null) continue;
-                    var pos = HGet(node, "Position");
-                    if (pos == null) continue;
-                    int x = VInt(pos, "x", "X"), y = VInt(pos, "y", "Y"), z = VInt(pos, "z", "Z");
-                    if (x < 0 || x >= SizeX || z < 0 || z >= SizeZ) continue;
-                    int surf = Surface[x, z];
-                    if (surf < 0) continue;
-                    if (y >= surf && IsBuiltData(HGet(node, "DataType")))
+                    if (!_sliceEnum.MoveNext())
                     {
-                        if (y > surf && TowerAbove[x, z] < 255) TowerAbove[x, z]++;
-                        // a column with any built voxel at/above surface IS built
-                        if (Cls[x, z] != CLS_WATER) Cls[x, z] = CLS_BUILT;
+                        if (_slicePass == 1)
+                        {
+                            _sliceEnum = _sliceGrid.GetEnumerator();
+                            _slicePass = 2;
+                            continue;
+                        }
+                        var summary = FinishScan(_sliceNodes);
+                        ResetSlice();
+                        return summary;
                     }
-                    byte vb = 0; try { vb = Convert.ToByte(HGet(node, "VoxelTypeIdByte") ?? (byte)0); } catch { }
-                    if (y < surf && vb != 0 && CellarBelow[x, z] < 255) CellarBelow[x, z]++;   // solid => diggable depth
+                    var node = _sliceEnum.Current;
+                    if (node == null) continue;
+                    if (_slicePass == 1) { _sliceNodes++; Pass1Node(node); }
+                    else Pass2Node(node);
                 }
+                return LastSummary = $"worldmap: scanning… pass {_slicePass}/2, {_sliceNodes} nodes (slice resumes next tick)";
+            }
+            catch (Exception ex)
+            {
+                ResetSlice();
+                return LastSummary = "worldmap EXC: " + (ex.InnerException?.Message ?? ex.Message);
+            }
+        }
 
+        private static void Pass1Node(object node)
+        {
+            var pos = HGet(node, "Position");
+            if (pos == null) return;
+            int x = VInt(pos, "x", "X"), y = VInt(pos, "y", "Y"), z = VInt(pos, "z", "Z");
+            if (x < 0 || x >= SizeX || z < 0 || z >= SizeZ) return;
+            bool walk = false; try { walk = Convert.ToBoolean(HGet(node, "IsWalkable") ?? false); } catch { }
+            bool water = false; try { water = Convert.ToBoolean(HGet(node, "IsWater") ?? false); } catch { }
+            var dt = HGet(node, "DataType");
+            bool built = IsBuiltData(dt);
+            byte voxByte = 0; try { voxByte = Convert.ToByte(HGet(node, "VoxelTypeIdByte") ?? (byte)0); } catch { }
+            bool solid = voxByte != 0;
+            if (walk && y > Surface[x, z])
+            {
+                Surface[x, z] = y;
+                bool grass = false; try { grass = Convert.ToBoolean(HGet(node, "IsGrass") ?? false); } catch { }
+                bool tree = false; try { tree = Convert.ToBoolean(HGet(node, "HasShadowCasterPlants") ?? false); } catch { }
+                byte c;
+                if (water) c = CLS_WATER;
+                else if (built) c = CLS_BUILT;
+                else if (tree) c = CLS_TREE;
+                else if (grass || !solid) c = CLS_OPEN;
+                else c = CLS_ROCK;
+                Cls[x, z] = c;
+            }
+        }
+
+        private static void Pass2Node(object node)
+        {
+            var pos = HGet(node, "Position");
+            if (pos == null) return;
+            int x = VInt(pos, "x", "X"), y = VInt(pos, "y", "Y"), z = VInt(pos, "z", "Z");
+            if (x < 0 || x >= SizeX || z < 0 || z >= SizeZ) return;
+            int surf = Surface[x, z];
+            if (surf < 0) return;
+            if (y >= surf && IsBuiltData(HGet(node, "DataType")))
+            {
+                if (y > surf && TowerAbove[x, z] < 255) TowerAbove[x, z]++;
+                if (Cls[x, z] != CLS_WATER) Cls[x, z] = CLS_BUILT;
+            }
+            byte vb = 0; try { vb = Convert.ToByte(HGet(node, "VoxelTypeIdByte") ?? (byte)0); } catch { }
+            if (y < surf && vb != 0 && CellarBelow[x, z] < 255) CellarBelow[x, z]++;
+        }
+
+        private static string FinishScan(long nodes)
+        {
+            {
                 // Summary + histogram + downsampled overview.
                 long water2 = 0, open = 0, tree2 = 0, built2 = 0, rock = 0, none = 0, towers = 0, cellars = 0;
                 int minY = int.MaxValue, maxY = int.MinValue;
@@ -225,14 +290,49 @@ namespace GoingMedieval.LLM_NPCs
                 MinSurface = (minY == int.MaxValue ? 0 : minY);
                 MaxSurface = (maxY == int.MinValue ? 0 : maxY);
                 DumpOverview(minY, maxY);
+                DumpGrid();   // VillageForge --from-game input (Chronicle Test Gate 1)
                 LastScanTicks = DateTime.UtcNow.Ticks;
+                LLMNPCsPlugin.LogToFile("[WorldMap] sliced scan complete: " + LastSummary);
                 return LastSummary;
             }
-            catch (Exception ex) { return LastSummary = "worldmap EXC: " + (ex.InnerException?.Message ?? ex.Message); }
-            finally { var _ = DateTime.UtcNow.Ticks - t0; }
         }
 
         private static string Pct(long n, long total) => total > 0 ? $"{100 * n / total}%" : "0%";
+
+        /// <summary>FULL-RESOLUTION grid export — VillageForge's --from-game
+        /// input, so master plans are generated against the REAL map. Format:
+        /// "W H" header, then H rows of class chars (~.T#^ space=none), then H
+        /// rows of surface levels as hex digits (F = none/16+).</summary>
+        private static void DumpGrid()
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.Append(SizeX).Append(' ').Append(SizeZ).Append('\n');
+                for (int z = 0; z < SizeZ; z++)
+                {
+                    for (int x = 0; x < SizeX; x++)
+                        sb.Append(Cls[x, z] == CLS_WATER ? '~' : Cls[x, z] == CLS_OPEN ? '.'
+                            : Cls[x, z] == CLS_TREE ? 'T' : Cls[x, z] == CLS_BUILT ? '#'
+                            : Cls[x, z] == CLS_ROCK ? '^' : ' ');
+                    sb.Append('\n');
+                }
+                for (int z = 0; z < SizeZ; z++)
+                {
+                    for (int x = 0; x < SizeX; x++)
+                    {
+                        int s = Surface[x, z];
+                        sb.Append(s < 0 || s > 15 ? 'F' : "0123456789ABCDEF"[s]);
+                    }
+                    sb.Append('\n');
+                }
+                System.IO.File.WriteAllText(
+                    @"F:\DEV_ENV\projects\Mods\Going Medieval\LLM_NPCs_BepInEx\validation\worldmap_grid.txt",
+                    sb.ToString());
+                LLMNPCsPlugin.LogToFile($"[WorldMap] grid exported for VillageForge ({SizeX}x{SizeZ})");
+            }
+            catch { }
+        }
 
         // Downsampled ASCII overview so a HUMAN can validate the full-map read.
         // Samples the column grid down to <= 72 wide, dominant class per block.

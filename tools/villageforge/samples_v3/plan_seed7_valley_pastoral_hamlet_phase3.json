@@ -1,0 +1,99 @@
+{
+ "phase": 3,
+ "style": {
+  "density": "hamlet",
+  "walls": "none",
+  "layout": "ring",
+  "verticality": "low",
+  "farms": "inside",
+  "keep": false,
+  "name": "pastoral hamlet (scattered, open, fields within)"
+ },
+ "new_work": [
+  {
+   "kind": "market",
+   "rect": [
+    59,
+    88,
+    7,
+    5
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "church",
+   "rect": [
+    42,
+    93,
+    6,
+    9
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "infirmary",
+   "rect": [
+    90,
+    76,
+    6,
+    5
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    91,
+    84,
+    6,
+    5
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    47,
+    85,
+    8,
+    5
+   ],
+   "floors": 1,
+   "cellar_depth": 1,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "cellar": {
+    "dig_levels": 1,
+    "stair_shaft": true,
+    "full_wall_ring": true,
+    "beam_every": 3
+   }
+  },
+  {
+   "kind": "wall_ring",
+   "cells": 0,
+   "id": "wood_wall_element"
+  },
+  {
+   "kind": "towers",
+   "count": 0
+  }
+ ]
+}

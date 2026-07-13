@@ -66,14 +66,25 @@ namespace GoingMedieval.LLM_NPCs
                 new { Name = "southwest", X = cx - r - fw,    Z = cz - r - fh },
                 new { Name = "northwest", X = cx - r - fw,    Z = cz + r + 1 },
             };
+            // Zone rects fetched once per call — the slot the Dolgellau longhouse
+            // took contained the colony's stockpiles, putting a corpse pile
+            // INSIDE the house (Ken, eyes-on 2026-07-12). A slot with someone's
+            // stockpile in it is not clear.
+            var zoneRects = StockpileZoner.GetZoneRects();
+            var swSlots = System.Diagnostics.Stopwatch.StartNew();
             for (int k = 0; k < slots.Length; k++)
             {
+                // 50ms budget across the slot ring (each slot = ~260 map queries;
+                // under water-sim contention that's seconds — same freeze class).
+                if (swSlots.ElapsedMilliseconds > 50) return false;   // caller's cooldown handles retry
                 var s = slots[(index + k) % slots.Length];   // building i prefers slot i, then walks the ring
                 bool clear = true;
                 for (int ix = 0; ix < fw && clear; ix++)
                     for (int iz = 0; iz < fh && clear; iz++)
-                        if (!StockpilePlacer.CanPlaceWallAt(s.X + ix, ay, s.Z + iz)
-                            || !StockpilePlacer.CellIsDry(s.X + ix, ay, s.Z + iz)) clear = false;   // no marsh housing
+                        if (!WorldMap.SnapshotBuildableDry(s.X + ix, ay, s.Z + iz)
+                            || StockpileZoner.CellInRects(zoneRects, s.X + ix, s.Z + iz)
+                            || !StockpilePlacer.CanPlaceWallAt(s.X + ix, ay, s.Z + iz)
+                            || !StockpilePlacer.CellIsDry(s.X + ix, ay, s.Z + iz)) clear = false;   // no marsh housing, no zone-squatting
                 if (!clear) continue;
                 ox = s.X; oz = s.Z; slotName = s.Name;
                 return true;

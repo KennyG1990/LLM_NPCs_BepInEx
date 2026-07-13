@@ -34,6 +34,8 @@ namespace GoingMedieval.LLM_NPCs
         private const int N = 4; // each room is N x N; footprint is N x (2N-1)
 
         private static bool _planned = false;
+        private static int _searchResumeRadius = 2;      // time-budgeted site search resumes here
+        private static float _searchCooldownUntil = 0f;  // failed full pass → don't rescan for 5 min
         private static int _ay;
         private static readonly List<int[]> _wallCells = new List<int[]>();
         private static readonly List<int[]> _doorCells = new List<int[]>();
@@ -63,12 +65,32 @@ namespace GoingMedieval.LLM_NPCs
         public static int[] HearthCell => _hearthCell;
         public static string RoomsSummary => _roomsSummary;
 
+        /// <summary>True when (x,z) lies within the planned house footprint
+        /// (interior + wall ring). Used by StockpileZoner to keep corpse/refuse
+        /// roles OUT of the family home (Ken, eyes-on 2026-07-12: corpse
+        /// stockpile inside the house — the house was placed over old zones).</summary>
+        public static bool FootprintContains(int x, int z)
+        {
+            if (!_planned || _wallCells.Count == 0) return false;
+            int minX = int.MaxValue, maxX = int.MinValue, minZ = int.MaxValue, maxZ = int.MinValue;
+            foreach (var c in _wallCells)
+            {
+                if (c[0] < minX) minX = c[0];
+                if (c[0] > maxX) maxX = c[0];
+                if (c[1] < minZ) minZ = c[1];
+                if (c[1] > maxZ) maxZ = c[1];
+            }
+            return x >= minX && x <= maxX && z >= minZ && z <= maxZ;
+        }
+
         /// <summary>Clear ALL per-session state. Called by BuiltState when a
         /// world (re)load is detected, before any tick can act on stale flags.</summary>
         public static void Reset()
         {
             _planned = false;
             Complete = false;
+            _searchResumeRadius = 2;
+            _searchCooldownUntil = 0f;
             _ay = 0;
             _wallCells.Clear(); _doorCells.Clear(); _roofCells.Clear();
             _bedCells.Clear(); _pantryCells.Clear(); _hearthCell = null; _roomsSummary = "";
@@ -368,6 +390,28 @@ namespace GoingMedieval.LLM_NPCs
             foreach (var c in _wallCells) { if (c[0] > fw) fw = c[0]; if (c[1] > fh) fh = c[1]; }
             fw++; fh++;   // footprint width/height from the relative plan
 
+            // COOLDOWN GATES *ALL* SITING, slots included (freeze #5, 17:21:47:
+            // the spiral was cooling down but TryGetSlot's ~2k reflected map
+            // queries still ran every tick and hit the same water-sim race —
+            // the deadlock strikes on ANY map query; only NOT querying is safe).
+            if (UnityEngine.Time.realtimeSinceStartup < _searchCooldownUntil)
+            {
+                LastStep = $"house: no dry {fw}x{fh} footprint (siting cooling down; terrain won't change soon)";
+                return false;
+            }
+
+            // SNAPSHOT-FIRST (2026-07-13, the radius-2 infinite loop: without
+            // the snapshot every candidate costs live queries, one ring can't
+            // finish inside the budget, and ring-granularity resume never
+            // advances). Siting WAITS for the sliced worldmap scan — ~a minute
+            // once per session — then the snapshot prefilter makes the whole
+            // search near-free.
+            if (WorldMap.LastScanTicks == 0)
+            {
+                LastStep = "house: waiting for worldmap snapshot (siting becomes cheap once scanned)";
+                return false;
+            }
+
             // VILLAGE PLAZA SLOTS first (Ken's rule: one center, buildings ring
             // it, doors facing in). Spiral search survives only as fallback.
             VillageLayout.EstablishIfNeeded();
@@ -384,17 +428,38 @@ namespace GoingMedieval.LLM_NPCs
                 return true;
             }
 
-            for (int radius = 2; radius <= 18 && !_planned; radius++)
+            // FREEZE FIX (2026-07-12, breadcrumb-confirmed 4/4): this spiral is
+            // ~360k reflected map queries per full pass (37² origins × fw*fh
+            // cells × 2 checks) on the MAIN THREAD, re-run EVERY tick when it
+            // fails (marsh map: it always fails) — each pass raced the water-sim
+            // thread until one deadlocked. Now: 50ms budget per tick with
+            // radius-resume, and a 5-minute cooldown after a full failed pass.
+            if (_searchResumeRadius <= 2)   // log once per pass, not every resume slice
+                LLMNPCsPlugin.LogToFile($"[HouseBuilder] site search begin {fw}x{fh} (radius {_searchResumeRadius}..18, snapshot-backed)");
+            var zoneRects = StockpileZoner.GetZoneRects();   // once per pass, NOT per cell
+            var swSearch = System.Diagnostics.Stopwatch.StartNew();
+            for (int radius = _searchResumeRadius; radius <= 18 && !_planned; radius++)
             {
                 for (int dx = -radius; dx <= radius && !_planned; dx++)
                     for (int dz = -radius; dz <= radius && !_planned; dz++)
                     {
+                        // BUDGET PER ORIGIN, not per ring (freeze #10: one radius-18
+                        // ring is ~39k map queries — under water-sim contention a
+                        // per-ring check allowed a 67-SECOND freeze).
+                        if (swSearch.ElapsedMilliseconds > 50)
+                        {
+                            _searchResumeRadius = radius;
+                            LastStep = $"house: site search paused at radius {radius}/18 (time budget; resumes next tick)";
+                            return false;
+                        }
                         int ox = nx + dx, oz = nz + dz;
                         bool clear = true;
                         for (int ix = 0; ix < fw && clear; ix++)
                             for (int iz = 0; iz < fh && clear; iz++)
-                                if (!StockpilePlacer.CanPlaceWallAt(ox + ix, ay, oz + iz)
-                                    || !StockpilePlacer.CellIsDry(ox + ix, ay, oz + iz)) clear = false;   // buildable ≠ habitable
+                                if (!WorldMap.SnapshotBuildableDry(ox + ix, ay, oz + iz)      // snapshot FIRST: array read, no live query
+                                    || StockpileZoner.CellInRects(zoneRects, ox + ix, oz + iz)
+                                    || !StockpilePlacer.CanPlaceWallAt(ox + ix, ay, oz + iz)
+                                    || !StockpilePlacer.CellIsDry(ox + ix, ay, oz + iz)) clear = false;   // buildable ≠ habitable ≠ someone's stockpile
                         if (!clear) continue;
 
                         LayoutV2(ox, oz, ay, nx, nz, seed, pop);
@@ -405,6 +470,50 @@ namespace GoingMedieval.LLM_NPCs
                                   $"{System.Math.Abs(ox - nx) + System.Math.Abs(oz - nz)} tiles from home, {_doorCells.Count} doors, " +
                                   (_hearthCell != null ? $"hearth in the hall-spine @({_hearthCell[0]},{_hearthCell[2]})" : "hall room");
                     }
+            }
+            _searchResumeRadius = 2;   // full pass finished — start over next time
+            if (!_planned)
+            {
+                _searchCooldownUntil = UnityEngine.Time.realtimeSinceStartup + 300f;
+                LLMNPCsPlugin.LogToFile($"[HouseBuilder] site search complete — no dry {fw}x{fh} footprint; cooling down 5 min");
+
+                // STARTER-SHACK FALLBACK — DISABLED BY KEN (2026-07-13: "I don't
+                // want a fallback basic house, the system needs to be able to
+                // reason around the end game which will be full of buildings").
+                // The village layout intelligence moves to the OFFLINE
+                // VillageForge generator (visual validation first, then ported);
+                // in-game siting executes its plans instead of improvising.
+                const bool StarterShackEnabled = false;
+                if (StarterShackEnabled && !BuiltState.HouseComplete)
+                {
+                    int sw2 = 4, sh2 = 2 * 4 - 1;   // N=4 shack: 4 wide, 7 deep
+                    bool shackBudgetOut = false;
+                    for (int radius = 2; radius <= 18 && !_planned && !shackBudgetOut; radius++)
+                    {
+                        for (int dx = -radius; dx <= radius && !_planned && !shackBudgetOut; dx++)
+                            for (int dz = -radius; dz <= radius && !_planned; dz++)
+                            {
+                                if (swSearch.ElapsedMilliseconds > 80) { shackBudgetOut = true; break; }   // per-origin check; shelter urgent, short retry below
+                                int ox2 = nx + dx, oz2 = nz + dz;
+                                bool clear2 = true;
+                                for (int ix = 0; ix < sw2 && clear2; ix++)
+                                    for (int iz = 0; iz < sh2 && clear2; iz++)
+                                        if (!WorldMap.SnapshotBuildableDry(ox2 + ix, ay, oz2 + iz)
+                                            || StockpileZoner.CellInRects(zoneRects, ox2 + ix, oz2 + iz)
+                                            || !StockpilePlacer.CanPlaceWallAt(ox2 + ix, ay, oz2 + iz)
+                                            || !StockpilePlacer.CellIsDry(ox2 + ix, ay, oz2 + iz)) clear2 = false;
+                                if (!clear2) continue;
+                                Layout(ox2, oz2, ay, nx, nz);
+                                _planned = true;
+                                _ay = ay;
+                                BuiltState.SaveHousePlan(ox2, oz2, ay);   // v1 plan — graduation upgrades it later
+                                _reason = $"STARTER SHACK {sw2}x{sh2} at ({ox2},{oz2}) — no pad for the longhouse; shelter first, upgrade later";
+                                LLMNPCsPlugin.LogToFile($"[HouseBuilder] {_reason}");
+                            }
+                    }
+                    if (_planned) _searchCooldownUntil = 0f;                                        // building now; no cooldown
+                    else if (shackBudgetOut) _searchCooldownUntil = UnityEngine.Time.realtimeSinceStartup + 30f;   // shelter urgent: retry soon, not in 5 min
+                }
             }
             LastStep = _planned
                 ? $"house: planned {_reason}"

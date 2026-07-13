@@ -153,10 +153,31 @@ namespace GoingMedieval.LLM_NPCs
                 if (zones.Count == _appliedForZoneCount) return LastResult;   // already applied this census
                 zones.Sort((a, b) => a.d.CompareTo(b.d));
 
+                // INSIDE-HOUSE OVERRIDE (Ken, eyes-on 2026-07-12: animal corpses
+                // on a stockpile INSIDE the house — the house was sited over old
+                // zones, and "farthest" was still only d=7). Rules:
+                //   * a zone inside the house footprint is ALWAYS a pantry
+                //     (food indoors is coherent; corpses indoors never are)
+                //   * REFUSE goes to the farthest zone OUTSIDE the footprint;
+                //     if every zone is inside, no refuse role is assigned and we
+                //     say so out loud instead of hiding corpses in the parlour.
+                bool[] inHouse = new bool[zones.Count];
                 for (int i = 0; i < zones.Count; i++)
                 {
-                    bool nearest = i == 0, farthest = i == zones.Count - 1;
-                    string role = farthest ? "REFUSE"
+                    var st = zones[i].sp.GetType().GetProperty("Start")?.GetValue(zones[i].sp, null);
+                    int zx = Convert.ToInt32(st?.GetType().GetField("x")?.GetValue(st) ?? -9999);
+                    int zz = Convert.ToInt32(st?.GetType().GetField("z")?.GetValue(st) ?? -9999);
+                    inHouse[i] = HouseBuilder.FootprintContains(zx, zz);
+                }
+                int refuseIdx = -1;
+                for (int i = zones.Count - 1; i >= 0; i--)
+                    if (!inHouse[i]) { refuseIdx = i; break; }
+
+                for (int i = 0; i < zones.Count; i++)
+                {
+                    bool nearest = i == 0;
+                    string role = i == refuseIdx ? "REFUSE"
+                                : inHouse[i] ? "PANTRY"
                                 : nearest && zones.Count >= 3 ? "PANTRY"
                                 : "MATERIALS";
                     Func<string, bool> keep =
@@ -166,6 +187,8 @@ namespace GoingMedieval.LLM_NPCs
                         : (id => !Waste.Contains(id) && !Food.Contains(id));          // 3+: middle = materials only
                     ApplyRole(zones[i].sp, keep);
                 }
+                if (refuseIdx < 0)
+                    LLMNPCsPlugin.LogToFile("[StockpileZoner] WARNING: every zone sits inside the house footprint — no refuse zone assigned; corpses have nowhere sane to go until a zone exists outside");
                 _appliedForZoneCount = zones.Count;
 
                 // VERIFY with the game's own filter — no silent no-ops.
@@ -176,6 +199,46 @@ namespace GoingMedieval.LLM_NPCs
                 return LastResult;
             }
             catch (Exception ex) { return LastResult = "zoner EXC: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>Snapshot every stockpile zone's rect (x0,z0,x1,z1). House
+        /// siting must treat zone cells as BLOCKED — the Dolgellau longhouse
+        /// was placed over the colony's zones, which is how a corpse pile ended
+        /// up indoors (Ken, eyes-on 2026-07-12). Called ONCE per site search;
+        /// the per-cell check is then plain arithmetic (no reflection in the
+        /// hot loop — that class of scan froze the main thread 4 times today).</summary>
+        public static List<int[]> GetZoneRects()
+        {
+            var rects = new List<int[]>();
+            try
+            {
+                var mgrT = FindTypeByName("StockpileManager");
+                object mgr = null;
+                foreach (var c in UnityEngine.Object.FindObjectsOfType(mgrT)) { mgr = c; break; }
+                var piles = mgr?.GetType().GetProperty("Stockpiles")?.GetValue(mgr, null) as IEnumerable;
+                if (piles == null) return rects;
+                foreach (var sp in piles)
+                {
+                    if (sp == null) continue;
+                    var st = sp.GetType().GetProperty("Start")?.GetValue(sp, null);
+                    var en = sp.GetType().GetProperty("End")?.GetValue(sp, null);
+                    if (st == null || en == null) continue;
+                    int x0 = Convert.ToInt32(st.GetType().GetField("x")?.GetValue(st) ?? 0);
+                    int z0 = Convert.ToInt32(st.GetType().GetField("z")?.GetValue(st) ?? 0);
+                    int x1 = Convert.ToInt32(en.GetType().GetField("x")?.GetValue(en) ?? 0);
+                    int z1 = Convert.ToInt32(en.GetType().GetField("z")?.GetValue(en) ?? 0);
+                    rects.Add(new[] { Math.Min(x0, x1), Math.Min(z0, z1), Math.Max(x0, x1), Math.Max(z0, z1) });
+                }
+            }
+            catch { }
+            return rects;
+        }
+
+        public static bool CellInRects(List<int[]> rects, int x, int z)
+        {
+            foreach (var r in rects)
+                if (x >= r[0] && z >= r[1] && x <= r[2] && z <= r[3]) return true;
+            return false;
         }
 
         /// <summary>Remove every id the role does not keep (string overload of

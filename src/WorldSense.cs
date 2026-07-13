@@ -36,7 +36,19 @@ namespace GoingMedieval.LLM_NPCs
         }
 
         /// <summary>Rasterize a (2*half+1)^2 region centred on home at level hy.</summary>
+        // DEFERRED (2026-07-12 ~23:20): the 80s main-thread raster's "background
+        // thread" cure crashed the game (off-thread reads of live game state =
+        // native crashes — the same lesson as WorldMap). Nothing critical
+        // consumes this raster (WorldMap feeds the site scorer), so it is
+        // DISABLED until it gets the sliced-enumerator treatment. Honest no-op.
         public static string Rasterize(int hx, int hy, int hz, int half = 18)
+        {
+            if (LastGrid.Length == 0)
+                LastGrid = "(worldsense raster deferred — off-thread reads crash; slice it like WorldMap before re-enabling)";
+            return LastGrid;
+        }
+
+        private static string RasterizeCore(int hx, int hy, int hz, int half = 18)
         {
             try
             {

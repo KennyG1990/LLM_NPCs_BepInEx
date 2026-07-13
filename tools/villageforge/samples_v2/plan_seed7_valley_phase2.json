@@ -1,0 +1,137 @@
+{
+ "phase": 2,
+ "new_work": [
+  {
+   "kind": "library",
+   "rect": [
+    61,
+    90,
+    6,
+    6
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "workshop",
+   "rect": [
+    57,
+    76,
+    6,
+    5
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "sewing",
+   "rect": [
+    64,
+    71,
+    4,
+    5
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "smokehouse",
+   "rect": [
+    63,
+    98,
+    4,
+    4
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "barn",
+   "rect": [
+    81,
+    90,
+    7,
+    5
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    82,
+    77,
+    7,
+    7
+   ],
+   "floors": 2,
+   "cellar_depth": 1,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "cellar": {
+    "dig_levels": 1,
+    "stair_shaft": true,
+    "full_wall_ring": true,
+    "beam_every": 3
+   },
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "house",
+   "rect": [
+    70,
+    64,
+    7,
+    5
+   ],
+   "floors": 2,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "field",
+   "rect": [
+    59,
+    62,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "field",
+   "rect": [
+    80,
+    96,
+    7,
+    5
+   ]
+  }
+ ]
+}

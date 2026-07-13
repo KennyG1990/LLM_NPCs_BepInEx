@@ -1,0 +1,143 @@
+{
+ "phase": 3,
+ "style": {
+  "density": "village",
+  "walls": "palisade",
+  "layout": "crossroads",
+  "verticality": "mid",
+  "farms": "outside",
+  "keep": true,
+  "name": "market village (crossroads, palisade)"
+ },
+ "new_work": [
+  {
+   "kind": "keep",
+   "rect": [
+    56,
+    87,
+    7,
+    7
+   ],
+   "floors": 3,
+   "cellar_depth": 1,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "cellar": {
+    "dig_levels": 1,
+    "stair_shaft": true,
+    "full_wall_ring": true,
+    "beam_every": 3
+   },
+   "upper_floors": {
+    "count": 2,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "market",
+   "rect": [
+    73,
+    79,
+    7,
+    5
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "church",
+   "rect": [
+    46,
+    86,
+    6,
+    9
+   ],
+   "floors": 2,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "infirmary",
+   "rect": [
+    60,
+    100,
+    6,
+    5
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "house",
+   "rect": [
+    84,
+    86,
+    8,
+    5
+   ],
+   "floors": 2,
+   "cellar_depth": 1,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "cellar": {
+    "dig_levels": 1,
+    "stair_shaft": true,
+    "full_wall_ring": true,
+    "beam_every": 3
+   },
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "house",
+   "rect": [
+    64,
+    89,
+    4,
+    6
+   ],
+   "floors": 1,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor"
+  },
+  {
+   "kind": "field",
+   "rect": [
+    51,
+    62,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "wall_ring",
+   "cells": 201,
+   "id": "wood_wall_element"
+  },
+  {
+   "kind": "towers",
+   "count": 4
+  }
+ ]
+}

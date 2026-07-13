@@ -1,0 +1,3 @@
+home.x=99
+home.y=6
+home.z=99

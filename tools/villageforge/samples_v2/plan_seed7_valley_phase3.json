@@ -1,0 +1,86 @@
+{
+ "phase": 3,
+ "new_work": [
+  {
+   "kind": "keep",
+   "rect": [
+    73,
+    77,
+    7,
+    7
+   ],
+   "floors": 3,
+   "cellar_depth": 1,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "cellar": {
+    "dig_levels": 1,
+    "stair_shaft": true,
+    "full_wall_ring": true,
+    "beam_every": 3
+   },
+   "upper_floors": {
+    "count": 2,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "church",
+   "rect": [
+    72,
+    98,
+    6,
+    9
+   ],
+   "floors": 2,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "house",
+   "rect": [
+    48,
+    86,
+    5,
+    6
+   ],
+   "floors": 2,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "field",
+   "rect": [
+    44,
+    75,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "wall_ring",
+   "cells": 196,
+   "id": "wood_wall_element"
+  },
+  {
+   "kind": "towers",
+   "count": 3
+  }
+ ]
+}
