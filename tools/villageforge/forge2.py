@@ -56,6 +56,11 @@ class Situation:
         self.seed, self.biome, self.pop_final = seed, biome, pop_final
         self.w, self.h = w, h
         self.style = style or Style()
+        self.surf = None      # --from-game surface levels (flat-pad rule)
+        self.depth = None     # --from-game cellar-capable depth per column
+        self.tower = None     # --from-game built levels above surface
+        self.levels = None    # --from-game total vertical layers (the game's 16)
+        self.anchor = None    # (x, z) colony home — site the plaza NEAR the settlers
 
 
 class Style:
@@ -99,10 +104,28 @@ GRID_FILE = r"F:\DEV_ENV\projects\Mods\Going Medieval\LLM_NPCs_BepInEx\validatio
 def load_game_terrain(sit, path=GRID_FILE):
     """--from-game: the mod's full-resolution snapshot export becomes the
     forge's terrain — master plans generated against the REAL map. '#'
-    (already built) is treated like rock: never build on it."""
-    with open(path, encoding="utf-8") as f:
-        w, h = (int(v) for v in f.readline().split())
+    (already built) is treated like rock: never build on it.
+    Format v2 (header "W H Y") ships FOUR blocks: classes, surface level,
+    cellar-capable depth (solid diggable voxels below surface — the game's
+    16-layer verticality, Ken 2026-07-13), built-above. surf drives the
+    FLAT-PAD rule; depth drives honest cellar assignment — the forge only
+    plans a cellar where the ground can actually take one. Old 2-block
+    files still load (depth simply stays unknown)."""
+    def hex_block(f, w, h):
         rows = [f.readline().rstrip("\n") for _ in range(h)]
+        if not rows or not all(len(r) >= w for r in rows):
+            return None
+        return [[int(rows[y][x], 16) if rows[y][x] != "F" else -1
+                 for x in range(w)] for y in range(h)]
+
+    with open(path, encoding="utf-8") as f:
+        head = f.readline().split()
+        w, h = int(head[0]), int(head[1])
+        sit.levels = int(head[2]) if len(head) > 2 else None
+        rows = [f.readline().rstrip("\n") for _ in range(h)]
+        sit.surf = hex_block(f, w, h)
+        sit.depth = hex_block(f, w, h)      # v2 only: cellar-capable depth
+        sit.tower = hex_block(f, w, h)      # v2 only: built levels above
     sit.w, sit.h = w, h
     mapping = {"~": WATER, ".": GRASS, "T": FOREST, "#": ROCK, "^": ROCK, " ": ROCK}
     return [[mapping.get(rows[y][x] if x < len(rows[y]) else " ", ROCK)
@@ -138,6 +161,9 @@ def synth_terrain(sit):
 
 
 def find_center(sit, t):
+    """Best water-clearance candidate; with sit.anchor set (the colony home),
+    clearance buys the site and PROXIMITY breaks the tie — Gate 1's hands-off
+    days must not open with a cross-island commute."""
     best, bx, by = -1, sit.w // 2, sit.h // 2
     rng = random.Random(sit.seed * 31)
     for _ in range(800):
@@ -152,8 +178,12 @@ def find_center(sit, t):
                    or t[int(y + r * math.sin(math.radians(a)))][int(x + r * math.cos(math.radians(a)))] == WATER
                    for a in range(0, 360, 30)):
                 break
-        if r > best:
-            best, bx, by = r, x, y
+        score = r
+        if sit.anchor:
+            ax, az = sit.anchor
+            score = min(r, 14) * 10 - math.hypot(x - ax, y - az)   # clearance capped, then walk distance decides
+        if score > best:
+            best, bx, by = score, x, y
     return bx, by
 
 
@@ -226,6 +256,12 @@ def master_plan(sit, t):
                     return False
                 if t[y][x] in (WATER, ROCK) or occ[y][x] != 0:
                     return False
+        # FLAT-PAD rule (--from-game): the in-game executor builds at ONE level
+        # and honestly fails a sloped rect — so the forge never emits one.
+        if sit.surf is not None:
+            levels = {sit.surf[y][x] for y in range(y0, y0 + h) for x in range(x0, x0 + w)}
+            if len(levels) != 1 or -1 in levels:
+                return False
         # margin BY DENSITY (the style's voice): hamlet keeps 3 clear cells,
         # village 1, town 0 — shared walls are a taste, not a rule.
         gap = st.lot_gap()
@@ -244,6 +280,13 @@ def master_plan(sit, t):
             d = math.hypot(x + w / 2 - cx, y + h / 2 - cy)
             if not (dist[0] <= d <= dist[1]) or not fits(x, y, w, h):
                 continue
+            # HONEST CELLARS (--from-game v2): a cellar only as deep as the
+            # ground under THIS lot can actually be dug (the game's 16-layer
+            # verticality) — never a plan the diggers can't execute.
+            if cellar and sit.depth is not None:
+                diggable = min(sit.depth[yy][xx]
+                               for yy in range(y, y + h) for xx in range(x, x + w))
+                cellar = max(0, min(cellar, diggable))
             for yy in range(y, y + h):
                 for xx in range(x, x + w):
                     occ[yy][xx] = 2
@@ -345,9 +388,71 @@ def master_plan(sit, t):
             "gate": gate, "gate_i": gate_i, "style": vars(st)}
 
 
+# ── ORIENTATION LOCK (Ken eyeballed 2026-07-13: the in-game view is the
+# LEFT-RIGHT mirror of raw grid draw order — "it's B"). All renders flip X
+# at DRAW TIME ONLY; plan/world coordinates never flip. ─────────────────────
+def _flipped_view(sit, t, mp=None):
+    ft = [row[::-1] for row in t]
+    fsurf = [row[::-1] for row in sit.surf] if sit.surf is not None else None
+    if mp is None:
+        return ft, fsurf, None
+    import copy
+    fm = copy.deepcopy(mp)
+    W = sit.w
+    fm["center"] = (W - 1 - mp["center"][0], mp["center"][1])
+    fm["occ"] = [row[::-1] for row in mp["occ"]]
+    for b in fm["buildings"]:
+        b["rect"][0] = W - b["rect"][0] - b["rect"][2]
+    for f in fm["fields"]:
+        f["rect"][0] = W - f["rect"][0] - f["rect"][2]
+    if fm.get("grave"):
+        fm["grave"]["rect"][0] = W - fm["grave"]["rect"][0] - fm["grave"]["rect"][2]
+    fm["walls"] = [(W - 1 - x, y) for (x, y) in mp["walls"]]
+    fm["towers"] = [(W - x0 - w, y0, w, h) for (x0, y0, w, h) in mp["towers"]]
+    if fm.get("gate"):
+        fm["gate"] = (W - 1 - mp["gate"][0], mp["gate"][1])
+    return ft, fsurf, fm
+
+
+# ── render the RAW map (no village): see the real seed in forge terms ──────
+def render_terrain(sit, t, out_png, anchor=None):
+    """The game map alone, in the forge's own palette — the eyeball step
+    BEFORE planning: is the export right, where is the water, where's home.
+    Elevation (when --from-game supplied surface rows) is shaded: higher
+    ground = lighter, so flat pads and slopes are visible at a glance."""
+    S = 7
+    t, surf, _ = _flipped_view(sit, t)      # orientation lock: pixels only
+    img = Image.new("RGB", (sit.w * S, sit.h * S + 40), (24, 22, 20))
+    d = ImageDraw.Draw(img)
+    lo, hi = 99, -1
+    if surf is not None:
+        for row in surf:
+            for v in row:
+                if v >= 0:
+                    lo, hi = min(lo, v), max(hi, v)
+    for y in range(sit.h):
+        for x in range(sit.w):
+            col = TERRAIN_COLORS[t[y][x]]
+            if surf is not None and t[y][x] != WATER and hi > lo and surf[y][x] >= 0:
+                f = (surf[y][x] - lo) / (hi - lo)              # 0 low .. 1 high
+                col = tuple(min(255, int(c * (0.72 + 0.56 * f))) for c in col)
+            d.rectangle([x * S, y * S, x * S + S - 1, y * S + S - 1], fill=col)
+    if anchor:
+        ax, ay = sit.w - 1 - anchor[0], anchor[1]   # same lock as the map
+        d.ellipse([ax * S - 10, ay * S - 10, ax * S + 10, ay * S + 10], outline=(255, 70, 60), width=3)
+        d.text((ax * S + 13, ay * S - 6), "HOME", fill=(255, 90, 80))
+    d.text((6, sit.h * S + 10),
+           f"REAL MAP · {sit.w}x{sit.h}" +
+           (f" · surface levels {lo}..{hi} (lighter = higher)" if hi > lo else "") +
+           " · palette: green=open dark-green=trees blue=water grey=rock",
+           fill=(230, 225, 210))
+    img.save(out_png)
+
+
 # ── render one phase: level panels + ghosted future ────────────────────────
 def render_phase(sit, t, mp, phase, out_png):
     S = 7
+    t, _, mp = _flipped_view(sit, t, mp)    # orientation lock: pixels only
     cx, cy = mp["center"]
     main_w, main_h = sit.w * S, sit.h * S
     panel = 46 * 3           # three sub-panels stacked, ~46px cells each? keep simple: quarter-scale level views
@@ -496,12 +601,29 @@ def main():
     ap.add_argument("--phase", type=int, default=0, help="0 = all phases")
     ap.add_argument("--from-game", action="store_true",
                     help="use the mod's worldmap_grid.txt export instead of synthetic terrain")
+    ap.add_argument("--anchor", default=None,
+                    help="colony home as 'x,z' — the plaza is sited near the settlers")
+    ap.add_argument("--terrain-only", action="store_true",
+                    help="render ONLY the map (no village) — eyeball the real seed before planning")
     ap.add_argument("--out", default="samples_v2")
     args = ap.parse_args()
+    if args.terrain_only:
+        sit = Situation(args.seed, args.biome)
+        if args.anchor:
+            sit.anchor = tuple(int(v) for v in args.anchor.split(","))
+        t = load_game_terrain(sit) if args.from_game else synth_terrain(sit)
+        os.makedirs(args.out, exist_ok=True)
+        png = os.path.join(args.out, "terrain_from_game.png" if args.from_game
+                           else f"terrain_seed{args.seed}_{args.biome}.png")
+        render_terrain(sit, t, png, anchor=sit.anchor)
+        print("rendered", png)
+        return
     styles = STYLE_PRESETS if args.style == "all" else {args.style: STYLE_PRESETS[args.style]}
     os.makedirs(args.out, exist_ok=True)
     for sname, style in styles.items():
         sit = Situation(args.seed, args.biome, style=style)
+        if args.anchor:
+            sit.anchor = tuple(int(v) for v in args.anchor.split(","))
         t = load_game_terrain(sit) if args.from_game else synth_terrain(sit)
         mp = master_plan(sit, t)
         phases = (1, 2, 3, 4) if args.phase == 0 else (args.phase,)

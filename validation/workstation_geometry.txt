@@ -1,0 +1,330 @@
+# workstation geometry (ground truth from BaseBuildingRepository blueprints)
+# fields: id | Size(x,y,z) | Forbidden F/B/L/R | workPositions | (schema on miss)
+### SCHEMA of BaseBuildingBlueprint (props):
+###   prop OcclusionCullingMode OcclusionCullingMode
+###   prop ForbiddenAreaInfo ForbiddenAreaInfo
+###   prop BuildingType UpgradeToFlag
+###   prop List`1 ReplacedByBlueprints
+###   prop Boolean CanBeReplaced
+###   prop String BeamComponentID
+###   prop String BedComponentID
+###   prop String CaravanPostComponentID
+###   prop String ChairComponentID
+###   prop String DecorationComponentID
+###   prop String DoorComponentID
+###   prop String GateComponentID
+###   prop String EntertainmentComponentID
+###   prop String FuelConsumerComponentID
+###   prop String GraveComponentID
+###   prop String LadderComponentID
+###   prop String MapTableComponentID
+###   prop String PenMarkerComponentID
+###   prop String RallyPointMarkerComponentID
+###   prop String ProductionComponentID
+###   prop String RoofComponentID
+###   prop String RugComponentID
+###   prop String ShelfComponentID
+###   prop String ShrineComponentID
+###   prop String SignComponentID
+###   prop String StairComponentID
+###   prop String TableComponentID
+###   prop String TradingPostComponentID
+###   prop String GallowsComponentID
+###   prop String TrapComponentID
+###   prop String WindowComponentID
+###   prop String VoxelComponentID
+###   prop String BuildAnimationTrigger
+###   prop String BuildItem
+###   prop String SlopeComponentID
+###   prop String WellComponentID
+###   prop String OilBlobComponentID
+###   prop String SiegeWeaponComponentID
+###   prop String BellComponentID
+###   prop Single SpawnFireOnDestroy
+###   prop Boolean IsVerticalFireBlocker
+###   prop Boolean CanHaveOwner
+###   prop String VoxelTypeID
+###   prop Single Cover
+###   prop Single CoverClosed
+###   prop Single CoverIgnore
+###   prop Boolean HasDestructionAnimation
+###   prop Int32 BuildTime
+###   prop Single InstallationMultiplier
+###   prop Int32 MinBuildSkillRequired
+###   prop Single AttackTraversePenalty
+###   prop Vec3Int Size
+###   prop StringIntDictionary Materials
+###   prop StringKeyPair ReturnOnDestroy
+###   prop StringKeyPair ReturnOnDeconstruct
+###   prop StorageBase StorageBase
+###   prop BuildingType BuildingType
+###   prop BuildingCategoryUI BuildingCategoryUI
+###   prop BuildingSubCategoryUI BuildingSubCategoryUI
+###   prop SoundMaterialCategory SoundMaterialCategory
+###   prop ConstructableBaseCategory ConstructableBaseCategory
+###   prop BuildingType ReplacementFlag
+###   prop PlacementType PlacementType
+###   prop PlacementCheck PlacementCheck
+###   prop Boolean FloorDecoration
+###   prop Int32 MaxPoolCount
+###   prop Int32 RefillThreshold
+###   prop Boolean Poolable
+###   prop Boolean PlaceableBellowOthers
+###   prop Single LayerHideOffset
+###   prop Single LayerShadowOffset
+###   prop Boolean ForbidUnderBeamPlacement
+###   prop Boolean PassivePredatorProtection
+###   prop UInt16 PathfindingPenaltyConstruction
+###   prop UInt16 PathfindingPenalty
+###   prop Single WalkSpeedMultiplierConstruction
+###   prop Single WalkSpeedMultiplier
+###   prop ThermalModel DefaultThermalModel
+###   prop Boolean Socketable
+###   prop Boolean IgnorePileRelocation
+###   prop Boolean CanBeMoved
+###   prop Boolean SpawnStructurePileOnStabilityLoss
+###   prop Boolean PassthroughFloor
+###   prop Boolean WaterFlowThroughFloor
+###   prop Boolean HasQuality
+###   prop List`1 DefaultVariations
+###   prop String PilePrefabID
+###   prop String DecomposeModifiersId
+###   prop Single Weight
+###   prop ProductQuality Quality
+###   prop Bounds OcclusionBoundingBox
+###   prop ConstructionParameters ConstructionParameters
+###   prop Boolean ShouldTriggerFenceMeshUpdate
+###   prop Dictionary`2 MeshVariationsByName
+###   prop Single WealthPoints
+###   prop Stat[] Stats
+###   prop Boolean CanPlaceOnBeam
+###   prop Boolean CanPlaceOnWater
+###   prop List`1 AlmanacTags
+###   prop String DestroyParticles
+###   prop String GroupIdentifier
+###   prop LocKeys[] LocKeys
+###   prop String IconPath
+###   prop String PrefabID
+###   prop String PreviewPrefabID
+###   prop Boolean IsRegionBridge
+###   prop Boolean IsSign
+###   prop Single BeautyInput
+###   prop Boolean BeautyBlocker
+###   prop String ID
+###   prop String SortingGroup
+###   prop String ProtoId
+###   prop Boolean IdleTargetForbidden
+###   prop List`1 VariationLists
+###   prop HashSet`1 VariationsSet
+###   prop SoundWalkableMaterialCategory WalkableMaterialCategory
+###   prop Boolean MeshVariationCanRotate
+###   prop Boolean MeshVariationCanRotate180
+###   prop Boolean MeshVariationCanFlipX
+###   prop Boolean MeshVariationCanFlipZ
+###   prop Boolean HideAutomaticMeshCheckbox
+###   prop Single Flammability
+###   prop Single HeatDamageThreshold
+###   prop Single HeatDamage
+###   prop Boolean CantFailConstruction
+###   prop Boolean ShowVariations
+###   prop List`1 PlayerTriggeredEvents
+###   prop List`1 PileVariationLists
+###   prop TransformSettings[] TransformSettingsArray
+###   prop String LightCookieId
+###   prop Boolean UseShadowCasters
+###   prop Boolean UseLOD
+###   prop BoxColliderSettings BoxColliderSettings
+###   prop TransformSettings[] WorkPositionsArray
+###   prop String EventPropsId
+###   prop String MeshColliderMeshId
+###   prop BoxColliderSettings CombatBoxColliderSettings
+###   prop TransformSettings PreviewMarkerOffset
+###   prop Boolean IsArt
+###   prop String PreviewMarkerPrefabId
+###   prop String IconColorOverlay
+###   prop Boolean PassThroughDestroyable
+###   prop Boolean HasVariationWithTexture
+###   prop Boolean HideInGame
+###   prop String[] FormerIDs
+### SCHEMA of BaseBuildingBlueprint (fields):
+###   field String id
+###   field Boolean hasDestructionAnimation
+###   field Int32 buildTime
+###   field Single installationMultiplier
+###   field Int32 minBuildSkillRequired
+###   field Vec3Int size
+###   field StringIntDictionary materials
+###   field StringKeyPair returnOnDestroy
+###   field StringKeyPair returnOnDeconstruct
+###   field StorageBase storageBase
+###   field BuildingType buildingType
+###   field BuildingCategoryUI buildingCategoryUI
+###   field BuildingSubCategoryUI buildingSubCategoryUI
+###   field SoundMaterialCategory soundMaterialCategory
+###   field ConstructableBaseCategory constructableBaseCategory
+###   field BuildingType replacementFlag
+###   field ReachableLevel reachableLevel
+###   field Boolean canHaveOwner
+###   field PlacementType placementType
+###   field PlacementCheck placementCheck
+###   field String groupIdentifier
+###   field Int32 maxPoolCount
+###   field Int32 refillThreshold
+###   field Boolean placeableBellowOthers
+###   field Single layerHideOffset
+###   field Single layerShadowOffset
+###   field Boolean forbidUnderBeamPlacement
+###   field UInt16 pathfindingPenalty
+###   field UInt16 pathfindingPenaltyConstruction
+###   field UInt16 pathfindingPenaltyAlwaysOpen
+###   field Single walkSpeedMultiplier
+###   field Single walkSpeedMultiplierConstruction
+###   field Single walkSpeedMultiplierAlwaysOpen
+###   field Boolean passThroughDestroyable
+###   field Single attackTraversePenalty
+###   field Stat[] stats
+###   field Single cover
+###   field Single coverClosed
+###   field Boolean passthroughFloor
+###   field Boolean waterFlowThroughFloor
+###   field Boolean hasQuality
+###   field Boolean passivePredatorProtection
+###   field Single coverIgnore
+###   field Single wealthPoints
+###   field Boolean ignorePileRelocation
+###   field Boolean canPlaceOnBeam
+###   field Boolean canPlaceOnWater
+###   field List`1 almanacTags
+###   field String destroyParticles
+###   field Boolean canBeMoved
+###   field Boolean spawnStructurePileOnStabilityLoss
+###   field ConstructionParameters constructionParameters
+###   field LocKeys[] locKeys
+###   field String iconPath
+###   field String iconColorOverlay
+###   field String prefabID
+###   field String previewPrefabID
+###   field Boolean isRegionBridge
+###   field Single beautyInput
+###   field Boolean beautyBlocker
+###   field ThermalModel defaultThermalModel
+###   field String defaultThermalModelID
+###   field String sortingGroup
+###   field Boolean floorDecoration
+###   field String protoId
+###   field Boolean idleTargetForbidden
+###   field SoundWalkableMaterialCategory soundWalkableMaterialCategory
+###   field List`1 defaultVariations
+###   field List`1 variationLists
+###   field String lightCookieId
+###   field Boolean useShadowCasters
+###   field Boolean useLOD
+###   field TransformSettings[] transformSettingsArray
+###   field HashSet`1 variationsSet
+###   field String pilePrefabID
+###   field List`1 pileVariationLists
+###   field String decomposeModifiersId
+###   field Single weight
+###   field Boolean meshVariationCanRotate
+###   field Boolean meshVariationCanRotate180
+###   field Boolean meshVariationCanFlipX
+###   field Boolean meshVariationCanFlipZ
+###   field Boolean hideAutomaticMeshCheckbox
+###   field ForbiddenAreaInfo forbiddenAreaInfo
+###   field BoxColliderSettings boxColliderSettings
+###   field TransformSettings[] workPositionsArray
+###   field String voxelTypeID
+###   field ProductQuality quality
+###   field OcclusionCullingMode occlusionCullingMode
+###   field Single occlusionCullingBoundingBoxHeightModifier
+###   field BuildingType upgradeToFlag
+###   field List`1 replacedByBlueprints
+###   field String beamComponentID
+###   field String bedComponentID
+###   field String caravanPostComponentID
+###   field String chairComponentID
+###   field String decorationComponentID
+###   field String doorComponentID
+###   field String gateComponentID
+###   field String entertainmentComponentID
+###   field String fuelConsumerComponentID
+###   field String graveComponentID
+###   field String ladderComponentID
+###   field String mapTableComponentID
+###   field String penMarkerComponentID
+###   field String rallyPointMarkerComponentID
+###   field String productionComponentID
+###   field String roofComponentID
+###   field String rugComponentID
+###   field String shelfComponentID
+###   field String shrineComponentID
+###   field String signComponentID
+###   field String stairComponentID
+###   field String tableComponentID
+###   field String tradingPostComponentID
+###   field String gallowsComponentID
+###   field String trapComponentID
+###   field String windowComponentID
+###   field String voxelComponentID
+###   field String buildAnimationTrigger
+###   field String buildItem
+###   field String slopeComponentID
+###   field String wellComponentID
+###   field String oilBlobComponentID
+###   field String siegeWeaponComponentID
+###   field String bellComponentID
+###   field Single spawnFireOnDestroy
+###   field Boolean isVerticalFireBlocker
+###   field Single flammability
+###   field Single heatDamageThreshold
+###   field Single heatDamage
+###   field Boolean variationsSetInit
+###   field Boolean cantFailConstruction
+###   field String eventPropsId
+###   field String meshColliderMeshId
+###   field String previewMarkerPrefabId
+###   field TransformSettings previewMarkerOffset
+###   field Boolean isArt
+###   field BoxColliderSettings combatBoxColliderSettings
+###   field Boolean hasVariationWithTextureCache
+###   field Boolean hasVariationWithTextureCacheInitialized
+###   field String defaultMeshId
+###   field List`1 playerTriggeredEvents
+###   field Bounds occlusionBoundingBox
+###   field Dictionary`2 meshVariationsByName
+###   field Dictionary`2 variationListByVariation
+###   field Boolean showVariationsInit
+###   field Boolean showVariations
+### ---
+camp_fire | Size 1,1,1 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?);(TransformSettings?);(TransformSettings?);(TransformSettings?)]
+limestone_stove | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+limestone_block_stove | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+clay_brick_stove | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+butchering_table | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+smokehouse | Size 2,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+limestone_smokehouse | Size 2,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+brewing_station | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+fermenting_station | Size 2,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+spirit_destilary | Size 3,1,3 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+oil_press | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+ice_station | Size 1,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+skep | Size 1,1,1 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?);(TransformSettings?);(TransformSettings?);(TransformSettings?)]
+smelting_station | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+limestone_smelting_station | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+kiln | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+limestone_kiln | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+blacksmith_station | Size 4,1,3 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+clay_brick_blacksmith_station | Size 4,1,3 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+minting_station | Size 2,1,1 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+saltpeter_pit | Size 3,1,3 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+woodwork_bench | Size 3,1,1 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+stonemasons_bench | Size 3,1,1 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+sewing_station | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+fletchers_table | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+armourer_table | Size 5,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+apothecary_bench | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+easel | Size 2,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+basic_research_table | Size 3,1,1 | Forbidden F0/B1/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+research_table | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+advanced_research_table | Size 3,1,3 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]
+grand_research_table | Size 3,1,2 | Forbidden F0/B0/L0/R0 | WorkPositionsArray=[(TransformSettings?)]

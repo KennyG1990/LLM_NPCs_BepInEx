@@ -49,8 +49,17 @@ namespace GoingMedieval.LLM_NPCs
         private static int _stockpilesPlaced = 0;
         private static int _cookPlaced = 0;
         private static int _bedsPlaced = 0;
+        private static int _planExecTick = 0;   // plan-exec yields every 4th tick to survival (farm/cellar/food)
         private static int _bedsInsidePlaced = 0;   // move-in beds (#32), session cap
         private static bool _dumpedIds = false;
+        // WET-MAP ROBUSTNESS (Edenham, 2026-07-13): furniture can't sit on marsh
+        // until a dry FLOOR exists. Bound how long the cook/butcher placement may
+        // BLOCK the pipeline; after this many passes without placing, fall through
+        // to build the house (the dry platform) instead of hanging on a slow,
+        // never-succeeding marsh cell-search. Once the floor stands, the search
+        // finds it. Dry maps place in 1-2 passes, so this never trips there.
+        private const int MaxBlockingPasses = 3;
+        private static int _cookStuck = 0, _butcherStuck = 0;
 
         public static string LastAction = "(idle)";
         public static string LastCensus = "";
@@ -86,6 +95,7 @@ namespace GoingMedieval.LLM_NPCs
                 // at their own Start cell — the raw count returned a phantom
                 // 'stockpiles=1' from a pooled/dead instance, which is what forced
                 // the old session-flag gate (and with it the reload duplicates).
+                StockpilePlacer.ClearCountCache();   // fresh building counts once per tick (perf: memoize the game-count calls)
                 int stockpiles = pop > 0 ? StockpilePlacer.CountVerifiedStockpiles() : -1;
                 int beds = pop > 0 ? StockpilePlacer.CountBuildings(BedId) : -1;
                 int cookfires = pop > 0 ? StockpilePlacer.CountBuildings(CookId) : -1;
@@ -198,6 +208,12 @@ namespace GoingMedieval.LLM_NPCs
                 // sat unbuilt for hours with Construct at 3/4/4 (eyes-on 18:50).
                 Phase("build-pressure");
                 JobRouter.EnsureBuildPressure(live, BlueprintDiagnostics.Pending);
+
+                // LABOR DIVISION (Ken, live 2026-07-13): split the workload so the
+                // colony doesn't all pile onto hauling — distinct cook + forager
+                // pinned alongside the pinned builder; the rest keep skill routing.
+                Phase("labor-split");
+                JobRouter.DivideLabor(live);
 
                 // ── REACT to blueprint blockers (read->decide->act loop) ──
                 // Resources missing for a pending blueprint: get MORE WOOD moving
@@ -357,7 +373,7 @@ namespace GoingMedieval.LLM_NPCs
 
                 // One-time: dump the real building ids so the plan can target the
                 // cooking station / walls / roof / door by their true ids.
-                if (!_dumpedIds) { _dumpedIds = true; StockpilePlacer.DumpBuildingIds(); }
+                if (!_dumpedIds) { _dumpedIds = true; StockpilePlacer.DumpBuildingIds(); StockpilePlacer.DumpWorkstationGeometry(); ResearchGate.DumpDebug(); }
 
                 // EVENT INTERACTOR groundwork (#34): one-shot type scan of the
                 // story/event/incident system → validation/event_api.txt.
@@ -410,6 +426,19 @@ namespace GoingMedieval.LLM_NPCs
 
                 // ── Strategic decision: ONE build per tick, highest priority first ──
 
+                // *** PLAN + HOUSE ADOPTION FIRST (Ken, 2026-07-13: "why do they keep
+                // building the fallback house?") *** This MUST run before any priority
+                // that returns. The cookfire block (Priority 2) returns every tick on
+                // "search paused", so an adopt call placed lower was never reached —
+                // the plan never loaded (planexec: no plan) and the improvised 4x7
+                // shack won by default. Load the VillageForge/LLM plan and adopt its
+                // house HERE, unconditionally, so the plan house claims _planned before
+                // the hardcoded shack can. No plan present => improvised is the true
+                // last resort.
+                Phase("plan-load+adopt");
+                PlanExecutor.Poll();
+                PlanExecutor.TryAdoptFirstHouse();
+
                 // Priority 1: STORAGE. A colony with nowhere to store resources
                 // stalls hauling and everything downstream of it. Gated on the
                 // VERIFIED world census (phantom instances filtered out), so a
@@ -432,6 +461,22 @@ namespace GoingMedieval.LLM_NPCs
                     return;
                 }
 
+                // Priority 1.5 — FOOD SECURITY FIRST (competence canon, 2026-07-13):
+                // a crop field is the sustainable-food leg, and a competent player
+                // secures food BEFORE expanding the village. This was Priority 4.7
+                // (after house/plan-exec/research/weapons/defense) so on any colony
+                // with an active VillageForge plan, plan-exec monopolized the ticks
+                // and the farm was NEVER placed — the colony starved with shelter
+                // built (Dowsby autumn day 8: farm idle, stored nutrition 0, a death;
+                // same pattern every test bed). Placed once, early, near home; falls
+                // through on failure so it never blocks shelter.
+                if (ColonyHome.Established && !BuiltState.FarmPlaced)
+                {
+                    Phase("farm");
+                    var fr = FarmPlanner.Tick(ColonyHome.X, ColonyHome.Y, ColonyHome.Z, ColonyHome.WorkRadius);
+                    if (fr.StartsWith("farm: '")) { LLMNPCsPlugin.LogToFile($"[ColonyBuilder] {fr}"); return; }
+                }
+
                 // Priority 2: a COOKING STATION (camp_fire) so raw food becomes
                 // meals — settlers can't eat cooked meals without one.
                 Phase("cook-athome-scan");
@@ -442,7 +487,19 @@ namespace GoingMedieval.LLM_NPCs
                     Phase("cook-place");
                     var r = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, CookId);
                     Record(!cookAtHome ? "COOKFIRE-AT-HOME" : "COOKFIRE", r, ref _cookPlaced);
-                    return;
+                    // NON-BLOCKING (Edenham wetland, 2026-07-13): hold the pipeline
+                    // only while actively placing or mid-scan. On marsh there is NO
+                    // dry cell for a campfire until the house FLOOR is built — so a
+                    // "no valid cell" result must NOT starve the house build (the
+                    // dry platform). Fall through; once the floor stands the cook
+                    // fire sites on it. Prevents the whole colony sleeping in rain.
+                    if (r != null && r.StartsWith("ok")) { _cookStuck = 0; return; }
+                    // NEVER block the house build on the cookfire search (Ulnaby 2026-07-13:
+                    // the perpetual "search paused" was starving the house-step every tick,
+                    // so the plan house sat "adopted" forever and never built). The cookfire's
+                    // per-cell search already advanced its resume this tick as a side effect;
+                    // fall through so the HOUSE builds in parallel. Once the floor stands the
+                    // cookfire finds its dry cell. Do NOT return here.
                 }
 
                 // Priority 2.5: BUTCHERING TABLE — hunted corpses are NOT food
@@ -457,7 +514,9 @@ namespace GoingMedieval.LLM_NPCs
                     Phase("butcher-place");
                     var br = StockpilePlacer.TryPlaceBuildingNear(builder.gameObject, "butchering_table");
                     int d3 = 0; Record("BUTCHER-TABLE", br, ref d3);
-                    return;
+                    // NON-BLOCKING + bounded (same wetland reason as the cookfire).
+                    if (br != null && br.StartsWith("ok")) { _butcherStuck = 0; return; }
+                    if (br != null && br.StartsWith("search paused") && ++_butcherStuck <= MaxBlockingPasses) return;
                 }
                 if (butcher > 0)
                 {
@@ -465,13 +524,32 @@ namespace GoingMedieval.LLM_NPCs
                     ProductionPlanner.Tick("butchering_table", "meat");
                 }
 
+                // *** PLAN HOUSE WINS OVER THE IMPROVISED FALLBACK *** (Ken, 2026-07-13:
+                // "why do they keep building this 6x7 fallback house"). ROOT CAUSE: the
+                // beds priority below calls HouseBuilder.Plan() — the hardcoded N=4
+                // (4x7) shack — and sets _planned=true. TryAdoptFirstHouse (Priority 4,
+                // later in the tick) then bails on `IsPlanned` and marks adoption DONE,
+                // so the VillageForge/LLM plan house was NEVER adopted; the fallback won
+                // every single time. Fix: adopt the plan house HERE, before any
+                // improvisation can plant its flag. A plan present => its house is built
+                // (LLM/forge geometry); the hardcoded shack is now a true last resort
+                // (only when there is no plan at all).
+                Phase("plan-adopt-early");
+                PlanExecutor.Poll();                 // load/refresh active_plan.json (30s-throttled)
+                PlanExecutor.TryAdoptFirstHouse();   // forge house claims _planned before the shack can
+
                 // Priority 3: BEDS placed INSIDE the house rooms (on the interior
-                // floor cells), one per settler — not scattered outside. Plan the
-                // house footprint first so interior cells exist to place them in.
-                if (beds >= 0 && beds < pop && _bedsPlaced < pop)
+                // floor cells), one per settler — not scattered outside.
+                // NO HARDCODED FALLBACK (Ken, 2026-07-13: "if there is a fallback then
+                // there is room for these errors... in the wild if you don't succeed you
+                // die"). The improvised HouseBuilder.Plan() shack is DELETED. Beds only
+                // place inside a house the VillageForge/LLM plan actually produced
+                // (adopted at the top of the tick). If the plan yields no buildable
+                // house, there is no house and no beds — the colony fails VISIBLY,
+                // which is the honest signal to fix the plan/siting, not paper over it.
+                if (beds >= 0 && beds < pop && _bedsPlaced < pop && HouseBuilder.IsPlanned)
                 {
-                    Phase("house-plan+beds");
-                    if (!HouseBuilder.IsPlanned) HouseBuilder.Plan(builder.gameObject);
+                    Phase("beds-in-plan-house");
                     // Beds go in DORM/BEDROOM cells (v2 plans purpose-tag them;
                     // legacy plans fall back to all interior cells). Skip cells
                     // that ALREADY hold a bed in the loaded save (world truth).
@@ -486,7 +564,12 @@ namespace GoingMedieval.LLM_NPCs
                         var c = bedCells[_bedsPlaced];
                         var r = StockpilePlacer.TryPlaceBuildingAt(c[0], HouseBuilder.Level, c[1], BedId);
                         Record("BED-inside", r, ref _bedsPlaced);
-                        return;
+                        // NON-BLOCKING (Edenham wetland, 2026-07-13): a bed can't sit
+                        // on marsh — its cell is dry only AFTER the house floor is
+                        // built there. On dry maps this still returns on success; on
+                        // marsh it falls through so the house (floor) builds first,
+                        // then beds land on the floor next pass. No sleeping in rain.
+                        if (r != null && r.StartsWith("ok")) return;
                     }
                     // NO outdoor fallback (Ken, eyes-on 2026-07-12: a bed alone in
                     // a field). A full interior is a HOUSE-EXTENSION need (#31
@@ -519,12 +602,41 @@ namespace GoingMedieval.LLM_NPCs
 
                 // Priority 4: build the settlers their own HOUSE (walls+door+roof),
                 // one piece per tick, once survival needs (storage/cook/beds) are met.
+                // UNIT C: a VillageForge plan, when present, is the architect —
+                // its first house is adopted INTO HouseBuilder before improvised
+                // siting can run (forge siting beats spiral search, always).
+                Phase("plan-poll");
+                PlanExecutor.Poll();
                 if (!HouseBuilder.Complete)
                 {
+                    Phase("plan-adopt");
+                    PlanExecutor.TryAdoptFirstHouse();
                     Phase("house-step");
                     var r = HouseBuilder.Step(builder.gameObject);
                     LLMNPCsPlugin.LogToFile($"[ColonyBuilder] {r}");
                     return;
+                }
+
+                // Priority 4.2: the REST of the forge plan (other shells) once the
+                // house stands — one focused build at a time, batched + budgeted.
+                // COMPETENT-PLAYER PRIORITY (2026-07-13, autonomous): building the
+                // REST of the village must not STARVE survival infrastructure. Left
+                // alone, plan-exec placed 1 blueprint/tick and monopolized the tick
+                // (it returns early), so farm+cellar+food (below it) never ran for
+                // ~15 min while food dropped. Fix: YIELD every 4th tick so farm,
+                // cellar and food-reaction always get turns — deadlock-free (the
+                // village still progresses 3/4 ticks; no dependency on farm/cellar
+                // succeeding). The first HOUSE (shelter) is already built above.
+                _planExecTick++;
+                if (PlanExecutor.HasPendingWork && (_planExecTick % 4 != 0))
+                {
+                    Phase("plan-exec");
+                    var pr = PlanExecutor.Step(builder.gameObject);
+                    if (pr != null)
+                    {
+                        LLMNPCsPlugin.LogToFile($"[ColonyBuilder] plan-exec: {pr}");
+                        return;
+                    }
                 }
 
                 // Priority 4.5: RESEARCH TABLE — the road from 3 settlers to a
@@ -625,15 +737,7 @@ namespace GoingMedieval.LLM_NPCs
                         LLMNPCsPlugin.LogToFile($"[ColonyBuilder] {dr}");
                 }
 
-                // Priority 4.7: FARM — agriculture researched by the colony's own
-                // hand; a crop field is the sustainable-food leg (hunt/forage
-                // deplete). One 4x4 near home on clear dry ground.
-                if (ColonyHome.Established && !BuiltState.FarmPlaced)
-                {
-                    Phase("farm");
-                    var fr = FarmPlanner.Tick(ColonyHome.X, ColonyHome.Y, ColonyHome.Z, ColonyHome.WorkRadius);
-                    if (fr.StartsWith("farm: '")) { LLMNPCsPlugin.LogToFile($"[ColonyBuilder] {fr}"); return; }
-                }
+                // (FARM moved to Priority 1.5 — food security before expansion.)
 
                 // Priority 5: UNDERGROUND — dig a food CELLAR into a nearby hill
                 // (food keeps better underground; stable temperature). One per save.
@@ -694,6 +798,7 @@ namespace GoingMedieval.LLM_NPCs
                     $"save:   {SaveGuard.LastResult}\n" +
                     $"freeze: {FreezeDetector.LastResult}\n" +
                     $"plan:   {PlanManager.LastResult}\n" +
+                    $"planexec: {PlanExecutor.Census()}\n" +
                     $"alerts: {ColonyAlerts.Current.Replace("\n", " | ")}\n");
             }
             catch { }

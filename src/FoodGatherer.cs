@@ -82,7 +82,13 @@ namespace GoingMedieval.LLM_NPCs
                 if (_animOrder == null || _animTypeEnum == null) return 0;
                 object hunt = Enum.Parse(_animOrder, "Hunt");
                 object wild = Enum.Parse(_animTypeEnum, "Wild");
-                object wildAgg = Enum.Parse(_animTypeEnum, "WildAggressive");
+                // WildAggressive (boars, bears, wolves) is DELIBERATELY EXCLUDED
+                // (Ken, live 2026-07-13: "people with shitty hunting skill end up
+                // hunting boars and dying"). A competent player never auto-hunts
+                // dangerous game — it charges and mauls the hunter. Safe game
+                // (Wild: deer, rabbit, fox) only. Deliberate dangerous hunts are a
+                // future war-party actuator (skilled+armed marksmen only), not the
+                // starving-colony food loop. LAW: never designate WildAggressive.
 
                 int marked = 0;
                 foreach (var kv in animals)
@@ -94,7 +100,7 @@ namespace GoingMedieval.LLM_NPCs
                     var at = animal.GetType();
                     try { if ((bool)(at.GetProperty("HasDied")?.GetValue(animal, null) ?? false)) continue; } catch { }
                     var atype = at.GetProperty("AnimalType")?.GetValue(animal, null);
-                    if (atype == null || (!atype.Equals(wild) && !atype.Equals(wildAgg))) continue;
+                    if (atype == null || !atype.Equals(wild)) continue;   // SAFE GAME ONLY
                     var curOrder = at.GetProperty("OrderType")?.GetValue(animal, null);
                     if (curOrder != null && curOrder.Equals(hunt)) continue;
                     object gp; try { gp = at.GetMethod("GetGridPosition", Type.EmptyTypes)?.Invoke(animal, null); } catch { continue; }
@@ -132,9 +138,18 @@ namespace GoingMedieval.LLM_NPCs
                 if (getPlant == null) return 0;
 
                 int marked = 0;
+                // TIME BUDGET (2026-07-13, autonomous: freeze [mod:food-scan] 3000ms).
+                // When nearby plants are foraged out, this radius x radius GetPlant
+                // scan runs the WHOLE grid finding nothing -> multi-second freeze.
+                // 40ms budget per tick; it re-scans next tick (targets are marked
+                // incrementally anyway). Same law as the map/site scans.
+                var swF = System.Diagnostics.Stopwatch.StartNew();
                 for (int dx = -radius; dx <= radius && marked < (Crisis ? 14 : 6) && (Crisis || _forageSession < ForageCap); dx++)
+                {
+                    if (swF.ElapsedMilliseconds > 40) break;
                     for (int dz = -radius; dz <= radius && marked < (Crisis ? 14 : 6) && (Crisis || _forageSession < ForageCap); dz++)
                     {
+                        if (swF.ElapsedMilliseconds > 40) break;
                         var cell = MakeVec3(hx + dx, hy, hz + dz);
                         if (cell == null) continue;
                         object plant; try { plant = getPlant.Invoke(mgr, new[] { cell }); } catch { continue; }
@@ -149,6 +164,7 @@ namespace GoingMedieval.LLM_NPCs
                         try { pt.GetMethod("SetCurrentOrder", new[] { _orderType, typeof(bool) })?.Invoke(plant, new[] { harvesting, (object)false }); marked++; _forageSession++; }
                         catch { }
                     }
+                }
                 return marked;
             }
             catch (Exception ex) { LLMNPCsPlugin.LogToFile("[FoodGatherer] forage EXC: " + ex.Message); return 0; }

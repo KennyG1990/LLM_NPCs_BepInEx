@@ -27,7 +27,7 @@ namespace GoingMedieval.LLM_NPCs
         private static float _nextDiplomacy = 0f;
         private static float _nextSlow = 0f;
 
-        public static void Reset() { _nextDiplomacy = 0f; _nextSlow = 0f; _factionsSeeded = false; LastResult = "(idle)"; }
+        public static void Reset() { _nextDiplomacy = 0f; _nextSlow = 0f; _factionsSeeded = false; _knownFactionNames.Clear(); LastResult = "(idle)"; }
 
         public static void Tick()
         {
@@ -73,6 +73,9 @@ namespace GoingMedieval.LLM_NPCs
         /// (WorldMap.Data.FactionInstances — decompile-grounded) and seed the
         /// diplomacy engine. Once per session, from the bridge tick.</summary>
         private static bool _factionsSeeded;
+        // Roster names cached at seed time — the ONLY source raid attribution
+        // may match against (law: never act on guessed ids).
+        private static readonly List<string> _knownFactionNames = new List<string>();
 
         public static void SeedFactionsOnce()
         {
@@ -101,6 +104,7 @@ namespace GoingMedieval.LLM_NPCs
                     float friendliness = 50f;
                     try { friendliness = Convert.ToSingle(fi.GetType().GetProperty("PlayerFriendliness")?.GetValue(fi, null) ?? 50f); } catch { }
                     factions.Add(new Dictionary<string, object> { { "name", name }, { "friendliness", friendliness } });
+                    if (!_knownFactionNames.Contains(name)) _knownFactionNames.Add(name);
                 }
                 if (factions.Count == 0) return;
                 mem.HttpPostAsync("/api/diplomacy/seed", new Dictionary<string, object>
@@ -115,6 +119,44 @@ namespace GoingMedieval.LLM_NPCs
             catch (Exception ex)
             {
                 LLMNPCsPlugin.LogToFile("[GameTruthBridge] SeedFactions EXC: " + (ex.InnerException?.Message ?? ex.Message));
+            }
+        }
+
+        /// <summary>GATE 3 LINK (doc-11 scenario 3, "the raid remembered"): a real
+        /// in-game raid event feeds AI Diplomacy. Called by EventInteractor at
+        /// EVENT DETECTED with the dialog title+body. Classification = the word
+        /// "raid" in the text; attribution = EXACTLY ONE seeded faction name
+        /// appearing verbatim (roster-matched, never guessed — animal raids name
+        /// no faction and fall out naturally). Escalation, war declarations,
+        /// proclamations and rumor propagation all run downstream in gm_systems
+        /// (report_raid, offline-tested).</summary>
+        public static void ReportRaidIfRaid(string title, string body)
+        {
+            try
+            {
+                string text = (title ?? "") + " " + (body ?? "");
+                if (text.IndexOf("raid", StringComparison.OrdinalIgnoreCase) < 0) return;
+                var mem = LLMNPCsPlugin.Instance?.MemoryManager;
+                if (mem == null || string.IsNullOrEmpty(mem.ActiveSaveId)) return;
+                var hits = new List<string>();
+                foreach (var n in _knownFactionNames)
+                    if (text.IndexOf(n, StringComparison.OrdinalIgnoreCase) >= 0) hits.Add(n);
+                if (hits.Count != 1)
+                {
+                    LLMNPCsPlugin.LogToFile($"[GameTruthBridge] raid text detected but raider not attributable ({hits.Count} roster matches) — diplomacy feed skipped honestly");
+                    return;
+                }
+                mem.HttpPostAsync("/api/diplomacy/raid", new Dictionary<string, object>
+                {
+                    { "save_id", mem.ActiveSaveId },
+                    { "raider", hits[0] },
+                    { "target", mem.ActiveSaveId },
+                });
+                LLMNPCsPlugin.LogToFile($"[GameTruthBridge] RAID reported to diplomacy: {hits[0]} raids {mem.ActiveSaveId} (Gate 3 chain link 1→2)");
+            }
+            catch (Exception ex)
+            {
+                LLMNPCsPlugin.LogToFile("[GameTruthBridge] ReportRaid EXC: " + (ex.InnerException?.Message ?? ex.Message));
             }
         }
 

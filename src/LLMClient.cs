@@ -144,6 +144,22 @@ namespace GoingMedieval.LLM_NPCs
             }
         }
 
+        /// <summary>Non-spending peek: would a call for this task currently fit its
+        /// lane? Callers use it to SKIP work whose LLM step would only be suppressed
+        /// (2026-07-13: NPC-to-NPC churned 181 suppressed starts, every conversation
+        /// 0 exchanges — start nothing you can't finish).</summary>
+        public static bool HasBudgetFor(string task)
+        {
+            lock (_spendLock)
+            {
+                var cutoff = DateTime.UtcNow.AddHours(-1);
+                while (_spend.Count > 0 && _spend.Peek().Key < cutoff) _spend.Dequeue();
+                bool critical = !string.IsNullOrEmpty(task) && _criticalTasks.Contains(task);
+                int laneCap = critical ? MaxCallsPerHour : Math.Max(0, MaxCallsPerHour - ReservedCriticalCalls);
+                return _spend.Count < laneCap;
+            }
+        }
+
         private static bool TrySpendBudget(string what)
         {
             lock (_spendLock)

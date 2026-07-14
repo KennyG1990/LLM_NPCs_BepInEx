@@ -124,13 +124,44 @@ namespace GoingMedieval.LLM_NPCs
             }
         }
 
+        // PERFORMANCE FIX (2026-07-13, autonomous): LogToFile used to Flush() on
+        // EVERY line. With ~1.5 settler-processing passes/sec each emitting ~10
+        // debug lines, that was ~15 SYNCHRONOUS DISK FLUSHES/sec — each stalling
+        // the main thread on I/O. Result: ColonyBuilder ticked every ~2 MINUTES
+        // (should be ~12s), the worldmap scan crawled (~90 min), and the colony
+        // couldn't build. Now: buffered WriteLine (cheap), flushed at most once
+        // per second by FlushLogPeriodic() from Update. Freeze/crash logs go to a
+        // SEPARATE file with its own flush, so hang attribution is unaffected.
+        private static readonly object _logLock = new object();
+        private static bool _logDirty = false;
+        private static float _nextLogFlush = 0f;
+
         public static void LogToFile(string message)
         {
-            if (Instance?._logFile != null)
+            var inst = Instance;
+            if (inst?._logFile == null) return;
+            lock (_logLock)
             {
-                Instance._logFile.WriteLine($"[{DateTime.UtcNow}] {message}");
-                Instance._logFile.Flush();
+                try { inst._logFile.WriteLine($"[{DateTime.UtcNow}] {message}"); _logDirty = true; }
+                catch { }
             }
+        }
+
+        // Verbose per-settler extraction traces flooded the log (~10 lines/settler/
+        // pass, thousands of lines) — pure debug noise. Off by default; flip on only
+        // when diagnosing NPCContextExtractor. Keeps the mod log readable + lean.
+        public static bool VerboseLogging = false;
+        public static void LogDebug(string message)
+        {
+            if (VerboseLogging) LogToFile(message);
+        }
+
+        internal void FlushLogPeriodic()
+        {
+            if (UnityEngine.Time.realtimeSinceStartup < _nextLogFlush) return;
+            _nextLogFlush = UnityEngine.Time.realtimeSinceStartup + 1.0f;
+            if (!_logDirty) return;
+            lock (_logLock) { try { _logFile?.Flush(); _logDirty = false; } catch { } }
         }
 
         private bool _autonomyForcedOnce = false;
@@ -141,6 +172,7 @@ namespace GoingMedieval.LLM_NPCs
             // "the game is freezing constantly"). The watchdog thread attributes
             // any stall >2s to whatever phase was running.
             FreezeDetector.Beat();
+            FlushLogPeriodic();   // buffered log -> flush at most 1/sec (perf: no per-line disk stall)
 
             // Autonomy is the operating mode for this build (the villagers run the
             // colony themselves). An older/stale config could pin EnableFullAutonomy
@@ -885,7 +917,7 @@ namespace GoingMedieval.LLM_NPCs
             }
 
             var npcId = GameBridge.GetSettlerId(settler.gameObject) ?? settler.gameObject.GetInstanceID().ToString();
-            LogToFile($"[Plugin:ProcessSettler] Processing settler {npcId} ({settler.Name})");
+            LogDebug($"[Plugin:ProcessSettler] Processing settler {npcId} ({settler.Name})");
             
             // Extract context
             var context = NPCContextExtractor.Extract(settler);

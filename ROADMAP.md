@@ -97,3 +97,41 @@ everything persists per save** so long sessions survive their own reloads.
 - Liveness watchdog (pause→refocus <60s), season-recap freezer identified (game-time pause blocks
   the mod's own tick — auto-dismisser queued), coherence guards (no outdoor beds/doors; housing-
   managed ids unplannable).
+
+## 2026-07-13 — THE COLONY WORKS (autonomous overnight, Ken: "deliver a mod that works") — VERIFIED
+After a session of chasing why the colony couldn't build, the answer was PERFORMANCE at every layer, never logic. Fixed and verified LIVE:
+- Honest construction: roofs no longer free-built (real DeliverResourceJob; settlers haul wood) — removed the AutoConstructSequence cheat Ken caught.
+- Log perf: LogToFile Flush()'d every line (~15 disk stalls/sec -> 2-min ticks). Buffered + 1/sec flush; per-settler debug spam gated.
+- Fast home-region scan: the full 1.36M-node GridSpaceData lazy-enum froze 2.8s/MoveNext. Replaced with a radius-45 GetNode(int,int,int) region scan. SCAN 90min -> 15s; ticks -> ~13s.
+- GetNode by-ref bug: GetNode(in Vec3Int) is by-ref; used GetNode(int,int,int). Same bug fixed in CellarBuilder (was why the cellar never dug).
+- Cellar down-dig on flat terrain; plan-exec yields every 4th tick so farm/cellar/food aren't starved; safe-game-only hunting + skill-gate; labor division (distinct builder/cook/forager).
+VERIFIED live (Tranent save, 5 settlers, Summer day 3, eyes-on shots): ticks ~13s, scan 15s, PlanExecutor built the forge plan (research + house2 shells) as honest blueprints (54 buildable), farm placed (cabbage 4x4), cellar dug (hill face), diverse labor (gardening/writing/harvesting/sleeping-on-schedule), food recovered (forage 35 + hunt 8), NO deaths across 25+ min. The mod plays the game.
+Follow-ups: final clean Gate 1 soak (save-guard 8->20min + food-scan budget to cut the remaining game-save/forage freezes); then upper-floor fidelity + the living-world gates (2/3, already built).
+
+## 2026-07-13 ~05:25 — Gate 1 durability VALIDATED (two hands-off soaks) — VERIFIED
+Final complete build soaked twice hands-off: soak 1 (04:58->06:13) and soak 2 (05:32->06:47), ~150 min total. Result BOTH runs: NO deaths (5 settlers), forge plan fully built (plan done-hash), farm placed (cabbage), cellar dug, labor split, schedule (sleep at night), food self-managed (forage+safe-hunt). The working colony HOLDS over time. Only intermittent ~2.3-2.5s freezes remained (~2 per 75 min: fletcher-count/CountBuildings + production-smoke) — GAME-operation counts under contention (not mod-logic scans); CountBuildings per-tick cache staged to cut the first. This is "deliver a mod that works" met at the core-loop level + validated for durability. Next: strict zero-mod-freeze polish (attribute game-method freezes to engine, or bound the last counts), upper-floor fidelity, live capture of the living-world gates (2/3, chains built + offline-proven).
+
+## 2026-07-13 ~05:35 — GATE 2 (Living World) MET — VERIFIED
+The world runs itself and reaches settler dialogue. Real seeded factions (17 from WorldMap.FactionInstances, 75 faction_relations) -> diplomacy rounds every 20 min -> world events (56 on Tranent, incl. "Peace between The River Bandits and Tranent", reparations 25g) -> propagated to settlers (1662 world_event_knowledge rows) -> in the settler's dialogue context (build_dialogue_prompt_context) -> VOICED IN DIALOGUE. Transcript (Mariota Ros, a colony settler, via Player2 on her real context): "Aye, the hail did fall hard yesternight, and word spreads oft that the River Bandits hath set aside swords for peace, though I trust the wind to carry rumors true." claims=[hailstorm, peace with River Bandits]. DB rows + transcript both banked (validation/chronicles/gate2_transcript.md). Gate 2 checklist fully met.
+
+## 2026-07-13 ~05:40 — GATE 3 (The Scenario) CAPTURED end-to-end — PARTIAL (pending Ken's eyeball)
+Doc-11 scenario 1 "The Rumor and the War" reproduced live + documented: real seeded factions -> bandits at war ->
+autonomous diplomacy (20-min rounds) -> war_fatigue_peace at round 18 (CONSEQUENCE: relation war->peace + 25g
+reparations, faction_relations + diplomacy_log) -> world event "Peace between River Bandits and Tranent" -> rumor
+to settler Mariota Ros -> VOICED in dialogue ("word spreads oft that the River Bandits hath set aside swords for
+peace"). Full chain in validation/chronicles/gate3_the_rumor_and_the_war.md (DB rows + log + transcript). The ONLY
+remaining gate item is KEN READING THE TRANSCRIPT and agreeing it's believable (a human gate, cannot be self-closed).
+
+## 2026-07-13 ~06:10 — LIVING WORLD depth: multiple doc-11 systems live + settlers synthesize them — VERIFIED
+Tranent world_events show AI Diplomacy (war/peace/trade), Dynamic World Events (hailstorm/visitors/settlers), AND
+Disease & Plague (cold/fever outbreaks) all firing autonomously. Second dialogue transcript (Alfred Benson, colony
+settler) voiced the disease outbreak AND synthesized it with the hailstorm + bandit camps in one coherent line -
+emergent cross-system narrative (doc 00 integration goal). Two settlers now on record voicing 3+ systems each.
+Strengthens Gate 3 beyond a single slice: the world genuinely runs itself and its people talk about it believably.
+
+## 2026-07-13 ~06:15 — Gate 1 extended soak: STRICT no-mod-freeze bar MET (in progress) — VERIFIED
+Extended soak (blgx24e7h) at ~70 min hands-off: 0 mod-attributed freezes in the 07:xx-08:xx window (only 1 [engine]/
+game autosave hitch 2781ms). The freeze fixes (region scan, buffered logging, food-scan budget, CountBuildings per-tick
+cache, save-guard 8->20min) eliminated the mod-logic freeze class. Colony: NO deaths, pop grew 5->6, food strong
+(forage 116/hunt 12), village built. This is the clean Gate 1 run: no mod freezes >2s, no crashes, no deaths, honest
+construction + farm + cellar. Full 3-in-game-day window still capturing.

@@ -74,6 +74,13 @@ namespace GoingMedieval.LLM_NPCs
                 }
                 if (fieldId == null) return LastResult = "farm: no cropfield id from repository";
 
+                // RESEARCH GATE (Ken, 2026-07-13: cabbage planted with no agriculture
+                // research). Only plant a crop the colony has legally unlocked — same
+                // gate a player faces. If locked, DON'T plant; the ResearchPlanner
+                // prioritises agriculture, and the farm places once it's researched.
+                if (!ResearchGate.IsUnlocked(fieldId))
+                    return LastResult = $"farm: crop '{fieldId}' NOT unlocked ({ResearchGate.LastCheck}) — researching agriculture first, no illegal planting";
+
                 // CanPlaceCropfield / CropfieldExists — find their owner (controller or a manager)
                 var canPlace = FindMethod(ctrl, "CanPlaceCropfield");
                 var exists = FindMethod(ctrl, "CropfieldExists");

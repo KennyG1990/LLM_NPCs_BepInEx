@@ -49,7 +49,18 @@ namespace GoingMedieval.LLM_NPCs
         private static string _roomsSummary = "";
         public static int TargetPop = 4;       // set by ColonyBuilder each tick
         private static int _wallIdx = 0, _doorIdx = 0, _roofIdx = 0, _floorIdx = 0;
+        // MULTI-STORY (2026-07-13): forge houses with floors>1 add upper stories.
+        // _upperPieces = {x, y, z, type}  type: 0 floor, 1 wall, 2 beam, 3 stair.
+        // Placed AFTER the ground floor, before the roof. floors=1 leaves this
+        // empty and _roofLevel = _ay+1, so the working single-story path is byte-
+        // identical. Structural law (Guide §3): beams span walls to hold the floor
+        // above (every ~3 tiles); stability inherits upward free; roof on top.
+        private static readonly List<int[]> _upperPieces = new List<int[]>();
+        private static int _upperIdx = 0;
+        private static int _floors = 1;
+        private static int _roofLevel;         // _ay + _floors (top); =_ay+1 for 1 story
         private static int _roofRetries = 0;   // consecutive rejections of the CURRENT row
+        private static bool _roofGap = false;  // a roof row that never placed — house is NOT fully roofed
         private static string _reason = "";
 
         public static bool Complete = false;
@@ -94,8 +105,9 @@ namespace GoingMedieval.LLM_NPCs
             _ay = 0;
             _wallCells.Clear(); _doorCells.Clear(); _roofCells.Clear();
             _bedCells.Clear(); _pantryCells.Clear(); _hearthCell = null; _roomsSummary = "";
+            _upperPieces.Clear(); _upperIdx = 0; _floors = 1; _roofLevel = 0;
             _wallIdx = _doorIdx = _roofIdx = _floorIdx = 0;
-            _roofRetries = 0;
+            _roofRetries = 0; _roofGap = false;
             _reason = "";
             LastStep = "(idle)";
         }
@@ -312,7 +324,9 @@ namespace GoingMedieval.LLM_NPCs
             if (!BuiltState.TryGetHousePlan(out int ox, out int oz, out int ay)) return false;
             // Version dispatch: v2 regenerates the corridor-spine plan from the
             // persisted seed+pop (identical layout); v1/absent = legacy shack.
-            if (BuiltState.HousePlanVersion == 2 && BuiltState.TryGetHousePlanV2(out int seed, out int pop))
+            if (BuiltState.HousePlanVersion == 3 && BuiltState.TryGetHousePlanV3(out int pw, out int ph))
+                LayoutRect(ox, oz, ay, pw, ph, BuiltState.HousePlanFloors);
+            else if (BuiltState.HousePlanVersion == 2 && BuiltState.TryGetHousePlanV2(out int seed, out int pop))
                 LayoutV2(ox, oz, ay, hx, hz, seed, pop);
             else
                 Layout(ox, oz, ay, hx, hz);
@@ -327,15 +341,95 @@ namespace GoingMedieval.LLM_NPCs
                 return false;
             }
             _planned = true;
-            _roofIdx = BuiltState.RoofsPlaced;   // roofs: persisted progress (no per-cell query)
-            if (_roofIdx > _roofCells.Count) _roofIdx = _roofCells.Count;
-            _reason = $"RE-ADOPTED persisted site ({ox},{oz}) lvl {ay}: {existing} pieces verified in-world, roofs {_roofIdx}/{_roofCells.Count}";
+            // ROOF RE-VERIFY (2026-07-13, Ken eyes-on: houses flagged 'complete' but
+            // ROOFLESS — rows that rejected while walls were still building had been
+            // skipped-and-counted, then persisted as done). On reload ALWAYS re-run
+            // the roof pass from row 0: KickRoofRow no-ops on roofs that exist and
+            // places the missing rows (now that the walls are built). Never trust a
+            // persisted 'complete' for the roof — verify it in the world.
+            _roofIdx = 0; _roofRetries = 0; _roofGap = false;
+            _reason = $"RE-ADOPTED persisted site ({ox},{oz}) lvl {ay}: {existing} pieces verified in-world; re-verifying roof";
             LLMNPCsPlugin.LogToFile($"[HouseBuilder] {_reason}");
-            if (BuiltState.HouseComplete)
+            Complete = false;   // stays incomplete until the roof is actually verified/placed this session
+            return true;
+        }
+
+        /// <summary>Unit C: simple shell layout for a FORGE-PLAN rect (version 3) —
+        /// perimeter walls, full interior floor, one door centered on the south
+        /// edge. Same code path for fresh adoption and reload re-adoption, so
+        /// the cells always come out identical for the same inputs.</summary>
+        private static void LayoutRect(int ox, int oz, int ay, int w, int h)
+            => LayoutRect(ox, oz, ay, w, h, 1);
+
+        private static void LayoutRect(int ox, int oz, int ay, int w, int h, int floors)
+        {
+            _wallCells.Clear(); _doorCells.Clear(); _roofCells.Clear();
+            _bedCells.Clear(); _pantryCells.Clear(); _hearthCell = null;
+            _upperPieces.Clear();
+            _floors = System.Math.Max(1, floors);
+            _roomsSummary = _floors > 1 ? $"forge {w}x{h} {_floors}-story " : $"forge shell {w}x{h} ";
+            var extDoor = new[] { ox + w / 2, oz };
+            int stairX = ox + w - 2, stairZ = oz + 1;   // interior corner = the stair shaft
+            bool multi = _floors > 1;
+
+            for (int x = ox; x < ox + w; x++)
+                for (int z = oz; z < oz + h; z++)
+                {
+                    if (x == extDoor[0] && z == extDoor[1]) continue;
+                    bool perimeter = (x == ox || x == ox + w - 1 || z == oz || z == oz + h - 1);
+                    if (perimeter) { _wallCells.Add(new[] { x, z }); continue; }
+                    if (multi && x == stairX && z == stairZ) continue;   // stair base — not a floor tile
+                    _roofCells.Add(new[] { x, z });   // ground-floor interior floor cells
+                }
+            _doorCells.Add(extDoor);
+            _ay = ay;
+            _roofLevel = ay + _floors;   // roof sits on TOP of the topmost story (=ay+1 for 1 story)
+
+            // UPPER STORIES: beams span the interior (every 3 tiles) to hold the
+            // floor above, perimeter walls enclose, a stair shaft climbs the SE
+            // corner (stair on each level EXCEPT the top, which is the landing).
+            // Structural law (Guide 3): beams support floors; stability inherits up.
+            if (multi)
             {
-                Complete = true;
-                LastStep = "house: re-adopted, already complete (persisted + verified in-world)";
+                _upperPieces.Add(new[] { stairX, ay, stairZ, 3 });   // ground stair -> 2nd story
+                for (int level = 1; level < _floors; level++)
+                {
+                    int uy = ay + level;
+                    bool topStory = (level == _floors - 1);
+                    for (int x = ox; x < ox + w; x++)
+                        for (int z = oz; z < oz + h; z++)
+                        {
+                            bool perimeter = (x == ox || x == ox + w - 1 || z == oz || z == oz + h - 1);
+                            if (perimeter) { _upperPieces.Add(new[] { x, uy, z, 1 }); continue; }   // wall
+                            if (x == stairX && z == stairZ)
+                            {
+                                _upperPieces.Add(new[] { x, uy, z, topStory ? 0 : 3 });   // top=landing floor, else stair up
+                                continue;
+                            }
+                            if (((x - ox) % 3 == 0) && ((z - oz) % 3 == 0))
+                                _upperPieces.Add(new[] { x, uy, z, 2 });   // beam (support), placed before floor
+                            _upperPieces.Add(new[] { x, uy, z, 0 });       // floor
+                        }
+                }
             }
+        }
+
+        /// <summary>Unit C: adopt a VillageForge plan rect as THE house. Keeps every
+        /// downstream coupling intact (beds inside InteriorCells, roof strips,
+        /// BuiltState persistence, move-in) because the executor feeds the plan
+        /// INTO this builder instead of building around it. Refused once a plan
+        /// already exists — the forge plan must arrive before improvised siting.</summary>
+        public static bool AdoptForgeRect(int ox, int oz, int ay, int w, int h, int floors = 1)
+        {
+            if (_planned || Complete) return false;
+            if (w < 3 || h < 3) return false;                  // a shell needs an interior
+            LayoutRect(ox, oz, ay, w, h, floors);
+            _planned = true;
+            _wallIdx = _doorIdx = _roofIdx = _floorIdx = _upperIdx = 0;
+            BuiltState.SaveHousePlanV3(ox, oz, ay, w, h, _floors);
+            _reason = $"FORGE PLAN house {w}x{h}{(_floors > 1 ? $" x{_floors}-story" : "")} at ({ox},{oz}) lvl {ay} — VillageForge siting, no improvisation";
+            LastStep = $"house: adopted {_reason}";
+            LLMNPCsPlugin.LogToFile($"[HouseBuilder] {_reason}");
             return true;
         }
 
@@ -352,6 +446,13 @@ namespace GoingMedieval.LLM_NPCs
 
         public static bool Plan(GameObject settlerGo)
         {
+            // FALLBACK DISABLED (Ken, 2026-07-13): the hardcoded N=4 (4x7) improvised
+            // shack is banned. Houses come ONLY from the VillageForge/LLM plan via
+            // AdoptForgeRect. If no plan produces a buildable house, the colony gets no
+            // house and fails visibly — no silent fallback to mask a broken plan.
+            LastStep = "house: NO improvised fallback (plan-only policy) — waiting for a VillageForge plan house";
+            return false;
+            #pragma warning disable CS0162
             if (_planned) return true;
             var node = StockpilePlacer.SettlerNode(settlerGo);
             // Site the house at the colony HOME, not wherever a settler wandered.
@@ -577,6 +678,23 @@ namespace GoingMedieval.LLM_NPCs
                 LastStep = $"house doors placed ({_doorCells.Count} total)";
                 return LastStep;
             }
+            // UPPER STORIES (multi-story forge houses): beams/floors/walls/stairs at
+            // their own levels, honest blueprints (settlers haul + build). Empty for
+            // floors=1 so the single-story path is untouched. Placed before the roof
+            // (which sits on the TOP story's walls at _roofLevel).
+            while (_upperIdx < _upperPieces.Count && placed < BatchCap)
+            {
+                var p = _upperPieces[_upperIdx++];   // {x, y, z, type: 0 floor,1 wall,2 beam,3 stair}
+                string uid = p[3] == 0 ? Floor : p[3] == 1 ? Wall : p[3] == 2 ? "wood_beam" : "wood_stair_straight";
+                if (StockpilePlacer.BuildingExistsAt(p[0], p[1], p[2], uid)) continue;
+                StockpilePlacer.TryPlaceBuildingAt(p[0], p[1], p[2], uid);
+                placed++;
+            }
+            if (placed > 0 || _upperIdx < _upperPieces.Count)
+            {
+                LastStep = $"house upper stories {_upperIdx}/{_upperPieces.Count} (batched {placed})";
+                return LastStep;
+            }
             // ROOF v3 — STRIPS, not cells (ground truth CanPlaceRoof:745-756:
             // only strip ENDPOINTS need support; endpoints sit over the perimeter
             // walls, the middle spans the room like a real roof). One strip per
@@ -591,7 +709,8 @@ namespace GoingMedieval.LLM_NPCs
                 // support=Y). If the row already holds roof instances, KICK the
                 // unqueued ones into construction — that IS the roof for this row.
                 int width = MaxX() - MinX() + 1;
-                string kick = StockpilePlacer.KickRoofRow(MinX(), MaxX(), _ay + 1, rowZ, Roof, out int have);
+                int roofY = _roofLevel > 0 ? _roofLevel : _ay + 1;   // top of the topmost story (=ay+1 single-story)
+                string kick = StockpilePlacer.KickRoofRow(MinX(), MaxX(), roofY, rowZ, Roof, out int have);
                 if (have >= width)
                 {
                     _roofIdx++; _roofRetries = 0; BuiltState.RoofsPlaced = _roofIdx;
@@ -607,22 +726,29 @@ namespace GoingMedieval.LLM_NPCs
                     LLMNPCsPlugin.LogToFile($"[HouseBuilder] {LastStep}");
                     return LastStep;
                 }
-                string res = StockpilePlacer.TryPlaceRoofStrip(MinX(), MaxX(), _ay + 1, rowZ, Roof);
+                string res = StockpilePlacer.TryPlaceRoofStrip(MinX(), MaxX(), (_roofLevel > 0 ? _roofLevel : _ay + 1), rowZ, Roof);
                 bool ok = res.StartsWith("ok:");
                 // HONEST counting (the old code counted ATTEMPTS — rejected rows
                 // were persisted as progress and never retried after a reload).
                 if (ok) { _roofIdx++; _roofRetries = 0; BuiltState.RoofsPlaced = _roofIdx; }
-                else if (++_roofRetries >= 4)
+                else if (++_roofRetries >= 60)
                 {
-                    LLMNPCsPlugin.LogToFile($"[HouseBuilder] roof row z={rowZ} gave up after {_roofRetries} rejections — SKIPPED: {res}");
-                    _roofIdx++; _roofRetries = 0;
+                    // 60 ticks (~13 min) with no placement = the WALLS below this row
+                    // never got built or a real geometry problem. Surface it honestly
+                    // (a roofless GAP) — do NOT silently count it and flag the house
+                    // done, which is how roofless houses got marked complete.
+                    LLMNPCsPlugin.LogToFile($"[HouseBuilder] ROOF GAP row z={rowZ} after {_roofRetries} tries — house will report roofless: {res}");
+                    _roofIdx++; _roofRetries = 0; _roofGap = true;
                 }
                 LastStep = $"house roof row {(ok ? _roofIdx : _roofIdx + 1)}/{depth}{(ok ? "" : $" (try {_roofRetries})")}: {res}";
                 return LastStep;
             }
             Complete = true;
             BuiltState.HouseComplete = true;    // survives reloads
-            LastStep = "house complete (two connected rooms: walls + exterior door + connecting doorway)";
+            LastStep = _roofGap
+                ? "house built but ROOFLESS GAP — some roof rows could not place (walls/support); NOT fully weatherproof"
+                : "house complete — walls + door + FULL ROOF (weatherproof)";
+            if (_roofGap) LLMNPCsPlugin.LogToFile("[HouseBuilder] " + LastStep);
             return LastStep;
         }
     }

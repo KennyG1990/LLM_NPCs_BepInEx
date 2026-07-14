@@ -405,6 +405,20 @@ def propagate_event(ctx, conn, save_id, event_id, settler_ids, rumor_state="rumo
             )
     return reached
 
+def _propagate_to_all_settlers(ctx, conn, save_id, event_id, rumor_state="rumor"):
+    """Every known settler learns an event (scenario 1's rumor loop). Shared by
+    diplomacy actions and raid feeds; propagation must never break its caller."""
+    if not event_id:
+        return 0
+    settlers = [row["settler_id"] for row in _rows(conn.execute(
+        "SELECT settler_id FROM npc_memory_profiles WHERE save_id = ?", (save_id,)))]
+    if not settlers:
+        return 0
+    try:
+        return propagate_event(ctx, conn, save_id, event_id, settlers, rumor_state) or 0
+    except Exception:  # noqa: BLE001 - propagation must never break the action
+        return 0
+
 def known_events(conn, save_id, settler_id, limit=10):
     return _rows(conn.execute("""
         SELECT we.id, we.event_type, we.title, we.description, we.status,
@@ -618,17 +632,10 @@ def apply_diplomacy_action(ctx, conn, save_id, faction_a, faction_b, action, ter
     event_id = None
     if event:
         event_id = _diplomacy_world_event(conn, save_id, event[0], event[1], event[2], [a, b])
-        # PROPAGATE (scenario 1's rumor loop): a proclamation nobody hears
-        # never reaches dialogue. Every known settler learns it as rumor —
-        # word of wars and pacts travels; the depth of detail stays gated by
-        # trust at dialogue time.
-        settlers = [row["settler_id"] for row in _rows(conn.execute(
-            "SELECT settler_id FROM npc_memory_profiles WHERE save_id = ?", (save_id,)))]
-        if settlers:
-            try:
-                propagate_event(ctx, conn, save_id, event_id, settlers, "rumor")
-            except Exception:  # noqa: BLE001 - propagation must never break the action
-                pass
+        # PROPAGATE (scenario 1's rumor loop): a proclamation nobody hears never
+        # reaches dialogue. Every known settler learns it as rumor — word of wars
+        # and pacts travels; detail stays trust-gated at dialogue time.
+        _propagate_to_all_settlers(ctx, conn, save_id, event_id, "rumor")
     ensure_entity(conn, save_id, "faction", faction_a)
     ensure_entity(conn, save_id, "faction", faction_b)
     return {"ok": True, "action": action, "proclamation": proclamation, "world_event_id": event_id}
@@ -689,13 +696,23 @@ def report_raid(ctx, conn, save_id, raider, target, casualties_raider=0, casualt
     stats["raids"] = stats.get("raids", 0) + 1
     conn.execute("UPDATE faction_relations SET relation = ?, stats_json = ?, updated_at = ? WHERE id = ?",
                  (relation, json.dumps(stats, ensure_ascii=False), _now(), rel["id"]))
-    _log_diplomacy(conn, save_id, raider, "raid", target,
-                   f"{raider} raided {target}" +
-                   (f" ({casualties_target} defenders fell)" if casualties_target else "."))
+    desc = (f"{raider} raided {target}" +
+            (f" — {casualties_target} defenders fell." if casualties_target else "."))
+    _log_diplomacy(conn, save_id, raider, "raid", target, desc)
+    # THE RAID IS ITSELF A WORLD EVENT (Gate 3 gap, 2026-07-13: the escalation
+    # branch below only fires when a raid crosses a NEW faction into war — but a
+    # raider already at war (the common case: bandit clans seed at relation -1.0)
+    # skipped it, so a real raid produced a diplomacy_log row and NOTHING that
+    # could reach a settler's dialogue. Every raid now becomes a propagatable
+    # military event, so the rumor→dialogue chain fires regardless of escalation.
+    raid_event_id = _diplomacy_world_event(
+        conn, save_id, "military", f"Raid: {raider} strikes {target}", desc, [raider, target])
+    _propagate_to_all_settlers(ctx, conn, save_id, raid_event_id, "rumor")
     escalated = None
     if rel["state"] != "war" and relation <= -0.6:
         escalated = apply_diplomacy_action(ctx, conn, save_id, raider, target, "declare_war")
-    return {"ok": True, "relation": round(relation, 2), "escalated_to_war": bool(escalated)}
+    return {"ok": True, "relation": round(relation, 2),
+            "escalated_to_war": bool(escalated), "world_event_id": raid_event_id}
 
 
 def _reparations_amount(stats, a, b):

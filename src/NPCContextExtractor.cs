@@ -23,17 +23,17 @@ namespace GoingMedieval.LLM_NPCs
         {
             if (settler == null)
             {
-                LLMNPCsPlugin.LogToFile("[NPCContextExtractor:Extract] settler is NULL");
+                LLMNPCsPlugin.LogDebug("[NPCContextExtractor:Extract] settler is NULL");
                 return null;
             }
 
-            LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:Extract] Starting for settler ID: {settler.GetInstanceID()}");
+            LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:Extract] Starting for settler ID: {settler.GetInstanceID()}");
 
             try
             {
                 if (!GameBridge.TryGetValidatedSettlerIdentity(settler.gameObject, out var validatedId, out var validatedName, out var runtimeWorkerComponent))
                 {
-                    LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:Extract] Validation failed for GO '{settler.gameObject?.name ?? "<null>"}' - skipping context extraction");
+                    LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:Extract] Validation failed for GO '{settler.gameObject?.name ?? "<null>"}' - skipping context extraction");
                     return null;
                 }
 
@@ -63,7 +63,7 @@ namespace GoingMedieval.LLM_NPCs
                     ColonyWealth = GameBridge.GetColonyWealth()
                 };
 
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:Extract] Basic info - Name: {context.Name}, Age: {context.Age}");
+                LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:Extract] Basic info - Name: {context.Name}, Age: {context.Age}");
 
                 // Health & Status
                 ExtractHealth(source, context);
@@ -88,20 +88,20 @@ namespace GoingMedieval.LLM_NPCs
 
                 LogExtractionDiagnostics(context);
 
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:Extract] Complete for {context.Name}");
+                LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:Extract] Complete for {context.Name}");
                 return context;
             }
             catch (Exception ex)
             {
                 LLMNPCsPlugin.Log.LogError($"Error extracting context: {ex}");
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:Extract] ERROR: {ex}");
+                LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:Extract] ERROR: {ex}");
                 return null;
             }
         }
 
         private static void ExtractHealth(object source, NPCContext context)
         {
-            LLMNPCsPlugin.LogToFile("[NPCContextExtractor:ExtractHealth] Starting");
+            LLMNPCsPlugin.LogDebug("[NPCContextExtractor:ExtractHealth] Starting");
             try
             {
                 var humanoidInstance = GetPropertyValue<object>(source, "HumanoidInstance") ?? source;
@@ -235,18 +235,18 @@ namespace GoingMedieval.LLM_NPCs
                 }
                 catch { }
 
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractHealth] Mood: {context.Mood}, Score: {context.MoodScore}, Effectors: {context.MoodLogs.Count}, Religion: {context.Religion}/{context.ReligiousAlignment:F2}");
+                LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractHealth] Mood: {context.Mood}, Score: {context.MoodScore}, Effectors: {context.MoodLogs.Count}, Religion: {context.Religion}/{context.ReligiousAlignment:F2}");
             }
             catch (Exception ex)
             {
                 LLMNPCsPlugin.Log?.LogDebug($"[ExtractHealth] Failed: {ex.Message}");
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractHealth] ERROR: {ex.Message}");
+                LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractHealth] ERROR: {ex.Message}");
             }
         }
 
         private static void ExtractNeeds(object source, NPCContext context)
         {
-            LLMNPCsPlugin.LogToFile("[NPCContextExtractor:ExtractNeeds] Starting");
+            LLMNPCsPlugin.LogDebug("[NPCContextExtractor:ExtractNeeds] Starting");
             try
             {
                 var statsObj = GetPropertyValue<object>(source, "Stats") ?? GetFieldValue<object>(source, "stats");
@@ -308,7 +308,7 @@ namespace GoingMedieval.LLM_NPCs
                             Privacy = 100f
                         };
 
-                        LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractNeeds] Extracted from Stats: Food={foodVal:F1}, Rest={sleepVal:F1}, Recreation={recVal:F1}, Comfort={comfortVal:F1}, Beauty={beautyVal:F1}");
+                        LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractNeeds] Extracted from Stats: Food={foodVal:F1}, Rest={sleepVal:F1}, Recreation={recVal:F1}, Comfort={comfortVal:F1}, Beauty={beautyVal:F1}");
                         return;
                     }
                 }
@@ -327,12 +327,12 @@ namespace GoingMedieval.LLM_NPCs
                         Privacy = GetNeedValue(needs, "privacy")
                     };
                 }
-                LLMNPCsPlugin.LogToFile("[NPCContextExtractor:ExtractNeeds] Complete");
+                LLMNPCsPlugin.LogDebug("[NPCContextExtractor:ExtractNeeds] Complete");
             }
             catch (Exception ex)
             {
                 LLMNPCsPlugin.Log?.LogDebug($"[ExtractNeeds] Failed: {ex.Message}");
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractNeeds] ERROR: {ex.Message}");
+                LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractNeeds] ERROR: {ex.Message}");
             }
         }
 
@@ -403,7 +403,7 @@ namespace GoingMedieval.LLM_NPCs
 
         private static void ExtractSkills(object source, NPCContext context)
         {
-            LLMNPCsPlugin.LogToFile("[NPCContextExtractor:ExtractSkills] Starting");
+            LLMNPCsPlugin.LogDebug("[NPCContextExtractor:ExtractSkills] Starting");
             try
             {
                 var humanoidInstance = GetPropertyValue<object>(source, "HumanoidInstance") ?? source;
@@ -539,9 +539,9 @@ namespace GoingMedieval.LLM_NPCs
 
                 ExtractWorkPriorities(source, context);
                 ApplySkillDerivedProfession(context);
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractSkills] Profession: {context.Profession}");
+                LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractSkills] Profession: {context.Profession}");
             }
-            catch (Exception ex) { LLMNPCsPlugin.Log?.LogDebug($"[ExtractSkills] Failed: {ex.Message}"); LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractSkills] ERROR: {ex.Message}"); }
+            catch (Exception ex) { LLMNPCsPlugin.Log?.LogDebug($"[ExtractSkills] Failed: {ex.Message}"); LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractSkills] ERROR: {ex.Message}"); }
         }
 
         private static void ApplySkillDerivedProfession(NPCContext context)
@@ -569,7 +569,7 @@ namespace GoingMedieval.LLM_NPCs
 
             context.Profession = inferred;
             context.BackgroundOrRole = inferred;
-            LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractSkills] Inferred profession {inferred} from top skill {top.Key}:{top.Value}");
+            LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractSkills] Inferred profession {inferred} from top skill {top.Key}:{top.Value}");
         }
 
         private static string InferProfessionFromSkill(string skillName)
@@ -592,7 +592,7 @@ namespace GoingMedieval.LLM_NPCs
 
         private static void ExtractEquipment(object source, NPCContext context)
         {
-            LLMNPCsPlugin.LogToFile("[NPCContextExtractor:ExtractEquipment] Starting");
+            LLMNPCsPlugin.LogDebug("[NPCContextExtractor:ExtractEquipment] Starting");
             try
             {
                 var equipment = GetFirstObject(source, "equipment", "Equipment", "gear", "Gear", "apparel", "Apparel");
@@ -617,14 +617,14 @@ namespace GoingMedieval.LLM_NPCs
                             context.Inventory.Add(name);
                     }
                 }
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractEquipment] Inventory count: {context.Inventory?.Count ?? 0}");
+                LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractEquipment] Inventory count: {context.Inventory?.Count ?? 0}");
             }
-            catch (Exception ex) { LLMNPCsPlugin.Log?.LogDebug($"[ExtractEquipment] Failed: {ex.Message}"); LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractEquipment] ERROR: {ex.Message}"); }
+            catch (Exception ex) { LLMNPCsPlugin.Log?.LogDebug($"[ExtractEquipment] Failed: {ex.Message}"); LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractEquipment] ERROR: {ex.Message}"); }
         }
 
         private static void ExtractCurrentActivity(object source, NPCContext context)
         {
-            LLMNPCsPlugin.LogToFile("[NPCContextExtractor:ExtractCurrentActivity] Starting");
+            LLMNPCsPlugin.LogDebug("[NPCContextExtractor:ExtractCurrentActivity] Starting");
             try
             {
                 var currentJob = GetFirstObject(source, "currentJob", "CurrentJob", "job", "Job", "activeTask", "ActiveTask", "currentTask", "CurrentTask");
@@ -637,15 +637,15 @@ namespace GoingMedieval.LLM_NPCs
                         Target = GetItemName(GetFirstObject(currentJob, "target", "Target", "destination", "Destination")),
                         Progress = GetFirstFloat(currentJob, "progress", "Progress", "completion", "Completion")
                     };
-                    LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractCurrentActivity] Activity: {context.CurrentActivity.Type}");
+                    LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractCurrentActivity] Activity: {context.CurrentActivity.Type}");
                 }
             }
-            catch (Exception ex) { LLMNPCsPlugin.Log?.LogDebug($"[ExtractCurrentActivity] Failed: {ex.Message}"); LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractCurrentActivity] ERROR: {ex.Message}"); }
+            catch (Exception ex) { LLMNPCsPlugin.Log?.LogDebug($"[ExtractCurrentActivity] Failed: {ex.Message}"); LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractCurrentActivity] ERROR: {ex.Message}"); }
         }
 
         private static void ExtractEnvironment(object source, NPCContext context)
         {
-            LLMNPCsPlugin.LogToFile("[NPCContextExtractor:ExtractEnvironment] Starting");
+            LLMNPCsPlugin.LogDebug("[NPCContextExtractor:ExtractEnvironment] Starting");
             try
             {
                 var sourceComponent = source as Component;
@@ -664,14 +664,14 @@ namespace GoingMedieval.LLM_NPCs
                     Weather = GetWeather(),
                     NearbyThreats = GetNearbyThreats(sourceComponent)
                 };
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractEnvironment] Weather: {context.Environment.Weather}");
+                LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractEnvironment] Weather: {context.Environment.Weather}");
             }
-            catch (Exception ex) { LLMNPCsPlugin.Log?.LogDebug($"[ExtractEnvironment] Failed: {ex.Message}"); LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractEnvironment] ERROR: {ex.Message}"); }
+            catch (Exception ex) { LLMNPCsPlugin.Log?.LogDebug($"[ExtractEnvironment] Failed: {ex.Message}"); LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractEnvironment] ERROR: {ex.Message}"); }
         }
 
         private static void ExtractSocial(object source, NPCContext context)
         {
-            LLMNPCsPlugin.LogToFile("[NPCContextExtractor:ExtractSocial] Starting");
+            LLMNPCsPlugin.LogDebug("[NPCContextExtractor:ExtractSocial] Starting");
             try
             {
                 var humanoidInstance = GetPropertyValue<object>(source, "HumanoidInstance") ?? source;
@@ -746,9 +746,9 @@ namespace GoingMedieval.LLM_NPCs
                         context.Reputation[repKey] = repVal;
                     }
                 }
-                LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractSocial] Relationships count: {context.Relationships?.Count ?? 0}");
+                LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractSocial] Relationships count: {context.Relationships?.Count ?? 0}");
             }
-            catch (Exception ex) { LLMNPCsPlugin.Log?.LogDebug($"[ExtractSocial] Failed: {ex.Message}"); LLMNPCsPlugin.LogToFile($"[NPCContextExtractor:ExtractSocial] ERROR: {ex.Message}"); }
+            catch (Exception ex) { LLMNPCsPlugin.Log?.LogDebug($"[ExtractSocial] Failed: {ex.Message}"); LLMNPCsPlugin.LogDebug($"[NPCContextExtractor:ExtractSocial] ERROR: {ex.Message}"); }
         }
 
         private static void ExtractWorkPriorities(object source, NPCContext context)
@@ -776,7 +776,7 @@ namespace GoingMedieval.LLM_NPCs
 
         private static void LogExtractionDiagnostics(NPCContext context)
         {
-            LLMNPCsPlugin.LogToFile(
+            LLMNPCsPlugin.LogDebug(
                 $"[NPCContextExtractor:Diagnostics] npc={context.Name}; skills={context.Skills?.Count ?? 0}; perks={context.Perks?.Count ?? 0}; states={context.States?.Count ?? 0}; moodLogs={context.MoodLogs?.Count ?? 0}; socLogs={context.SocialLogs?.Count ?? 0}");
         }
 
@@ -986,13 +986,13 @@ namespace GoingMedieval.LLM_NPCs
                                         if (method != null)
                                         {
                                             method.Invoke(valObj, new object[] { value });
-                                            LLMNPCsPlugin.LogToFile($"[SetStatValue] Successfully set stat {statTypeInt} to {value} via SetCurrent (fallback enum)");
+                                            LLMNPCsPlugin.LogDebug($"[SetStatValue] Successfully set stat {statTypeInt} to {value} via SetCurrent (fallback enum)");
                                             return true;
                                         }
                                         else
                                         {
                                             var setSuccess = SetFieldValue(valObj, "current", value);
-                                            LLMNPCsPlugin.LogToFile($"[SetStatValue] Set stat {statTypeInt} field 'current' directly to {value}: {setSuccess} (fallback enum)");
+                                            LLMNPCsPlugin.LogDebug($"[SetStatValue] Set stat {statTypeInt} field 'current' directly to {value}: {setSuccess} (fallback enum)");
                                             return setSuccess;
                                         }
                                     }
@@ -1014,13 +1014,13 @@ namespace GoingMedieval.LLM_NPCs
                                     if (method != null)
                                     {
                                         method.Invoke(statInstance, new object[] { value });
-                                        LLMNPCsPlugin.LogToFile($"[SetStatValue] Successfully set stat {statTypeInt} to {value} via SetCurrent");
+                                        LLMNPCsPlugin.LogDebug($"[SetStatValue] Successfully set stat {statTypeInt} to {value} via SetCurrent");
                                         return true;
                                     }
                                     else
                                     {
                                         var setSuccess = SetFieldValue(statInstance, "current", value);
-                                        LLMNPCsPlugin.LogToFile($"[SetStatValue] Set stat {statTypeInt} field 'current' directly to {value}: {setSuccess}");
+                                        LLMNPCsPlugin.LogDebug($"[SetStatValue] Set stat {statTypeInt} field 'current' directly to {value}: {setSuccess}");
                                         return setSuccess;
                                     }
                                 }
@@ -1159,7 +1159,7 @@ namespace GoingMedieval.LLM_NPCs
             if (!_loggedInvalidFindTypes.Add(key))
                 return;
 
-            LLMNPCsPlugin.LogToFile($"[NPCContextExtractor] Rejected dynamic find target type '{typeName}' in {context} (caller: {caller}): {reason}");
+            LLMNPCsPlugin.LogDebug($"[NPCContextExtractor] Rejected dynamic find target type '{typeName}' in {context} (caller: {caller}): {reason}");
         }
 
         private static string GetCallingMethodName()

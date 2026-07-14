@@ -32,6 +32,7 @@ namespace GoingMedieval.LLM_NPCs
             => (LLMNPCsPlugin.Instance?.NpcToNpcIntervalMinutes?.Value ?? 15) * 60f; // configurable (LLM.Intervals)
         private readonly float _maxConversationDistance = 5f;
         private readonly int _maxExchanges = 2; // was 4 (=8 LLM calls/convo); 2 keeps it short + cheap
+        private DateTime _budgetBackoffUntil = DateTime.MinValue; // lane-full backoff (no churn)
 
         public NPCToNPCDialogueManager(
             LLMClient llmClient,
@@ -139,6 +140,18 @@ namespace GoingMedieval.LLM_NPCs
 
         private bool ShouldStartConversation(Settler a, Settler b)
         {
+            // BUDGET BACKOFF (2026-07-13: 181 suppressed starts, every conversation
+            // "0 exchanges" — the lane was full so each start burned nothing but
+            // log noise). Never start a conversation whose FIRST LINE would only
+            // be suppressed; re-check in 5 minutes instead of churning every scan.
+            if (DateTime.UtcNow < _budgetBackoffUntil) return false;
+            if (!LLMClient.HasBudgetFor("npc_to_npc"))
+            {
+                _budgetBackoffUntil = DateTime.UtcNow.AddMinutes(5);
+                LLMNPCsPlugin.LogToFile("[NPCToNPCDialogueManager] dialogue lane full — conversation starts paused 5 min (no churn)");
+                return false;
+            }
+
             // Check if they're not busy with critical tasks
             var contextA = NPCContextExtractor.Extract(a);
             var contextB = NPCContextExtractor.Extract(b);

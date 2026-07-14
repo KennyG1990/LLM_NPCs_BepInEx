@@ -1,0 +1,93 @@
+{
+ "phase": 1,
+ "style": {
+  "density": "village",
+  "walls": "palisade",
+  "layout": "crossroads",
+  "verticality": "mid",
+  "farms": "outside",
+  "keep": true,
+  "name": "market village (crossroads, palisade)"
+ },
+ "new_work": [
+  {
+   "kind": "research",
+   "rect": [
+    103,
+    90,
+    5,
+    5
+   ],
+   "floors": 2,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "house",
+   "rect": [
+    81,
+    110,
+    7,
+    6
+   ],
+   "floors": 2,
+   "cellar_depth": 1,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "cellar": {
+    "dig_levels": 1,
+    "stair_shaft": true,
+    "full_wall_ring": true,
+    "beam_every": 3
+   },
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "house",
+   "rect": [
+    113,
+    103,
+    7,
+    6
+   ],
+   "floors": 2,
+   "cellar_depth": 0,
+   "walls": "wood_wall_element",
+   "door": "wood_door",
+   "floor": "wood_floor",
+   "upper_floors": {
+    "count": 1,
+    "beams": "wood_beam",
+    "stairs": "wood_stair_straight"
+   }
+  },
+  {
+   "kind": "field",
+   "rect": [
+    74,
+    86,
+    7,
+    5
+   ]
+  },
+  {
+   "kind": "gate_chokepoint_stub",
+   "cell": [
+    98,
+    121
+   ]
+  }
+ ]
+}

@@ -72,6 +72,7 @@ namespace GoingMedieval.LLM_NPCs
             ResearchPlanner.Reset();
             ProductionPlanner.Reset();
             FarmPlanner.Reset();
+            ResearchGate.Reset();   // clear the per-id unlock cache on a fresh colony / save load
             JobRouter.Reset();
             StockpileZoner.Reset();
             ScheduleRouter.Reset();
@@ -83,12 +84,13 @@ namespace GoingMedieval.LLM_NPCs
             VillageLayout.Reset();
             DefenseBuilder.Reset();
             GameTruthBridge.Reset();
+            PlanExecutor.Reset();
             // CROSS-VILLAGE STALENESS (caught live 2026-07-12: Ken's new game
             // showed Dolgellau's worldmap stats verbatim — the site planner
             // scored the NEW map against the OLD village's terrain and reported
             // "NO site fits a 12x12 pad" on unscanned ground). These three keep
             // once-per-session caches and had no Reset():
-            WorldMap.LastScanTicks = 0;        // → full rescan on the new map
+            WorldMap.ResetScanState();         // → fresh fast region scan on the new map
             WorldSense.LastGrid = "";          // → re-rasterize home region
             HouseSitePlanner.Done = false;     // → fresh leader siteplan…
             HouseSitePlanner.HasSite = false;  //   …against the FRESH worldmap
@@ -142,7 +144,7 @@ namespace GoingMedieval.LLM_NPCs
             _kv.Remove("house.ox"); _kv.Remove("house.oz"); _kv.Remove("house.ay");
             _kv.Remove("house.roofs"); _kv.Remove("house.complete");
             _kv.Remove("house.ver"); _kv.Remove("house.seed"); _kv.Remove("house.pop");
-            _kv.Remove("house.program");
+            _kv.Remove("house.program"); _kv.Remove("house.pw"); _kv.Remove("house.ph"); _kv.Remove("house.pf");
             Persist();
         }
 
@@ -166,6 +168,34 @@ namespace GoingMedieval.LLM_NPCs
             _kv["house.ox"] = ox.ToString(); _kv["house.oz"] = oz.ToString(); _kv["house.ay"] = ay.ToString();
             _kv["house.ver"] = "2"; _kv["house.seed"] = seed.ToString(); _kv["house.pop"] = pop.ToString();
             Persist();
+        }
+
+        /// <summary>Unit C: forge-plan house (version 3) — arbitrary rect adopted
+        /// from VillageForge's plan.json; w/h persisted so re-adoption regenerates
+        /// the identical shell layout.</summary>
+        public static bool TryGetHousePlanV3(out int w, out int h)
+        {
+            w = h = 0;
+            return TryInt("house.pw", out w) && TryInt("house.ph", out h);
+        }
+
+        /// <summary>Forge house floors (multi-story fidelity); 1 if absent.</summary>
+        public static int HousePlanFloors => TryInt("house.pf", out var f) && f >= 1 ? f : 1;
+
+        public static void SaveHousePlanV3(int ox, int oz, int ay, int w, int h, int floors = 1)
+        {
+            _kv["house.ox"] = ox.ToString(); _kv["house.oz"] = oz.ToString(); _kv["house.ay"] = ay.ToString();
+            _kv["house.ver"] = "3"; _kv["house.pw"] = w.ToString(); _kv["house.ph"] = h.ToString();
+            _kv["house.pf"] = Math.Max(1, floors).ToString();
+            Persist();
+        }
+
+        /// <summary>Unit C: hash of the forge plan file already executed to
+        /// completion for this save — a finished plan never restarts.</summary>
+        public static string PlanExecDoneHash
+        {
+            get { return _kv.TryGetValue("planexec.done", out var v) ? v : ""; }
+            set { _kv["planexec.done"] = value ?? ""; Persist(); }
         }
 
         /// <summary>#31 slice B: the ARCHITECT's room program for the CURRENT

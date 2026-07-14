@@ -139,7 +139,118 @@ namespace GoingMedieval.LLM_NPCs
         public static string Scan()
         {
             if (LastScanTicks != 0) return LastSummary;
-            return ScanSlice();
+            return ScanHomeRegionSlice();   // fast bounded scan (the full GridSpaceData enum was the tick-killer)
+        }
+
+        // ── FAST HOME-REGION SCAN (2026-07-13, autonomous perf fix) ──────────────
+        // Enumerating the full 206x206x16 GridSpaceData (1.36M nodes, 2 passes) via
+        // its LAZY enumerator was the tick-killer: a single MoveNext could take 2.8s
+        // (freeze log: [mod:worldmap-scan] 2797ms), blowing the 150ms budget and
+        // dragging ColonyBuilder ticks to ~2 MINUTES so the colony never got to
+        // build. The colony only sites buildings NEAR HOME, so scan a bounded box via
+        // direct GetNode lookups (cached reflection getters), budgeted + resumable.
+        private const int RegionRadius = 45;
+        private static int _regX0, _regX1, _regZ0, _regZ1, _regCurX, _regCurZ;
+        private static bool _regionStarted;
+        private static object _regMap; private static MethodInfo _regGetNode;
+        private static readonly object[] _regCellArg = new object[1];
+        private static PropertyInfo _pWalk, _pWater, _pDataType, _pVox, _pGrass, _pTree;
+        private static System.Reflection.ConstructorInfo _vecCtor;
+        private static Type _vec3IntType;
+
+        private static object MakeCell(int x, int y, int z)
+        {
+            _vec3IntType = _vec3IntType ?? FindTypeByName("Vec3Int");
+            if (_vecCtor == null && _vec3IntType != null)
+                _vecCtor = _vec3IntType.GetConstructor(new[] { typeof(int), typeof(int), typeof(int) });
+            try { return _vecCtor?.Invoke(new object[] { x, y, z }); } catch { return null; }
+        }
+
+        private static void CacheNodeGetters(Type nt)
+        {
+            PropertyInfo P(string n) => nt.GetProperty(n, BindingFlags.Public | BindingFlags.Instance);
+            _pWalk = P("IsWalkable"); _pWater = P("IsWater"); _pDataType = P("DataType");
+            _pVox = P("VoxelTypeIdByte"); _pGrass = P("IsGrass"); _pTree = P("HasShadowCasterPlants");
+        }
+
+        private static void ScanColumn(int x, int z)
+        {
+            int surface = -1;
+            for (int y = SizeY - 1; y >= 0; y--)
+            {
+                object node; try { node = _regGetNode.Invoke(_regMap, new object[] { x, y, z }); } catch { continue; }
+                if (node == null) continue;
+                if (_pWalk == null) CacheNodeGetters(node.GetType());
+                bool walk = false; try { walk = Convert.ToBoolean(_pWalk?.GetValue(node) ?? false); } catch { }
+                if (surface < 0 && walk)
+                {
+                    surface = y; Surface[x, z] = y;
+                    bool water = false, grass = false, tree = false, built = false; byte vox = 0;
+                    try { water = Convert.ToBoolean(_pWater?.GetValue(node) ?? false); } catch { }
+                    try { grass = Convert.ToBoolean(_pGrass?.GetValue(node) ?? false); } catch { }
+                    try { tree = Convert.ToBoolean(_pTree?.GetValue(node) ?? false); } catch { }
+                    try { built = IsBuiltData(_pDataType?.GetValue(node)); } catch { }
+                    try { vox = Convert.ToByte(_pVox?.GetValue(node) ?? (byte)0); } catch { }
+                    Cls[x, z] = water ? CLS_WATER : built ? CLS_BUILT : tree ? CLS_TREE
+                              : (grass || vox == 0) ? CLS_OPEN : CLS_ROCK;
+                }
+                else if (surface >= 0 && y < surface)
+                {
+                    byte vb = 0; try { vb = Convert.ToByte(_pVox?.GetValue(node) ?? (byte)0); } catch { }
+                    if (vb != 0 && CellarBelow[x, z] < 255) CellarBelow[x, z]++;
+                }
+            }
+        }
+
+        private static string ScanHomeRegionSlice()
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                if (!_regionStarted)
+                {
+                    var map = GetVillageMap();
+                    if (map == null) return LastSummary = "worldmap: no VillageMap (save loading?)";
+                    var size = HGet(map, "Size");
+                    if (size == null) return LastSummary = "worldmap: no Size";
+                    SizeX = VInt(size, "x", "X"); SizeY = VInt(size, "y", "Y"); SizeZ = VInt(size, "z", "Z");
+                    if (SizeX <= 0 || SizeZ <= 0) return LastSummary = "worldmap: bad size";
+                    Surface = new int[SizeX, SizeZ]; Cls = new byte[SizeX, SizeZ];
+                    TowerAbove = new byte[SizeX, SizeZ]; CellarBelow = new byte[SizeX, SizeZ];
+                    for (int ix = 0; ix < SizeX; ix++)
+                        for (int iz = 0; iz < SizeZ; iz++) { Surface[ix, iz] = -1; Cls[ix, iz] = CLS_NONE; }
+                    int hx = SizeX / 2, hz = SizeZ / 2;
+                    if (BuiltState.TryGetHome(out int bx, out int _, out int bz)) { hx = bx; hz = bz; }
+                    _regX0 = Math.Max(0, hx - RegionRadius); _regX1 = Math.Min(SizeX - 1, hx + RegionRadius);
+                    _regZ0 = Math.Max(0, hz - RegionRadius); _regZ1 = Math.Min(SizeZ - 1, hz + RegionRadius);
+                    _regCurX = _regX0; _regCurZ = _regZ0;
+                    _regMap = map;
+                    // Use the clean GetNode(int,int,int) overload — the GetNode(in Vec3Int)
+                    // one is by-ref (Vec3Int&) so a by-value type lookup returns null
+                    // ("no GetNode method" bug). 3 ints = no Vec3Int construction needed.
+                    _regGetNode = map.GetType().GetMethod("GetNode", new[] { typeof(int), typeof(int), typeof(int) });
+                    _pWalk = _pWater = _pDataType = _pVox = _pGrass = _pTree = null;
+                    _sliceNodes = 0;
+                    _regionStarted = true;
+                    LLMNPCsPlugin.LogToFile($"[WorldMap] FAST home-region scan begin ({_regX0}..{_regX1} x {_regZ0}..{_regZ1}) around home");
+                }
+                if (_regGetNode == null) { _regionStarted = false; return LastSummary = "worldmap: no GetNode method"; }
+                while (sw.ElapsedMilliseconds < 120)
+                {
+                    ScanColumn(_regCurX, _regCurZ);
+                    _sliceNodes++;
+                    _regCurZ++;
+                    if (_regCurZ > _regZ1) { _regCurZ = _regZ0; _regCurX++; }
+                    if (_regCurX > _regX1)
+                    {
+                        var summary = FinishScan(_sliceNodes);   // sets LastScanTicks + exports grid
+                        _regionStarted = false;
+                        return summary;
+                    }
+                }
+                return LastSummary = $"worldmap: FAST region scan col x={_regCurX}/{_regX1} ({_sliceNodes} cols done, resumes next tick)";
+            }
+            catch (Exception ex) { _regionStarted = false; return LastSummary = "worldmap region EXC: " + (ex.InnerException?.Message ?? ex.Message); }
         }
 
         /// <summary>SNAPSHOT PRE-FILTER (the freeze-class endgame, 2026-07-12:
@@ -168,6 +279,15 @@ namespace GoingMedieval.LLM_NPCs
 
         private static void ResetSlice()
         { _sliceEnum = null; _sliceGrid = null; _slicePass = 0; _sliceNodes = 0; }
+
+        /// <summary>Clear scan progress on world (re)load so the region scan
+        /// re-inits against the NEW map (called from BuiltState.ResetSession).</summary>
+        public static void ResetScanState()
+        {
+            LastScanTicks = 0; _regionStarted = false; _sliceNodes = 0;
+            _regMap = null; _regGetNode = null;
+            _pWalk = _pWater = _pDataType = _pVox = _pGrass = _pTree = null;
+        }
 
         private static string ScanSlice()
         {
@@ -300,15 +420,20 @@ namespace GoingMedieval.LLM_NPCs
         private static string Pct(long n, long total) => total > 0 ? $"{100 * n / total}%" : "0%";
 
         /// <summary>FULL-RESOLUTION grid export — VillageForge's --from-game
-        /// input, so master plans are generated against the REAL map. Format:
-        /// "W H" header, then H rows of class chars (~.T#^ space=none), then H
-        /// rows of surface levels as hex digits (F = none/16+).</summary>
+        /// input, so master plans are generated against the REAL map. Format v2
+        /// (Ken 2026-07-13: "every map has a maximum depth of 16 layers" — the
+        /// forge must see the vertical column, not just the surface):
+        /// header "W H Y" (Y = level count), then FOUR blocks of H rows each:
+        ///   1. class chars (~.T#^ space=none)
+        ///   2. surface level, hex (F = none/16+)
+        ///   3. cellar-capable depth below surface, hex (solid diggable voxels)
+        ///   4. built levels above surface, hex (towers/upper floors)</summary>
         private static void DumpGrid()
         {
             try
             {
                 var sb = new StringBuilder();
-                sb.Append(SizeX).Append(' ').Append(SizeZ).Append('\n');
+                sb.Append(SizeX).Append(' ').Append(SizeZ).Append(' ').Append(SizeY).Append('\n');
                 for (int z = 0; z < SizeZ; z++)
                 {
                     for (int x = 0; x < SizeX; x++)
@@ -317,21 +442,28 @@ namespace GoingMedieval.LLM_NPCs
                             : Cls[x, z] == CLS_ROCK ? '^' : ' ');
                     sb.Append('\n');
                 }
-                for (int z = 0; z < SizeZ; z++)
-                {
-                    for (int x = 0; x < SizeX; x++)
-                    {
-                        int s = Surface[x, z];
-                        sb.Append(s < 0 || s > 15 ? 'F' : "0123456789ABCDEF"[s]);
-                    }
-                    sb.Append('\n');
-                }
+                AppendHexBlock(sb, (x, z) => Surface[x, z]);
+                AppendHexBlock(sb, (x, z) => CellarBelow[x, z]);
+                AppendHexBlock(sb, (x, z) => TowerAbove[x, z]);
                 System.IO.File.WriteAllText(
                     @"F:\DEV_ENV\projects\Mods\Going Medieval\LLM_NPCs_BepInEx\validation\worldmap_grid.txt",
                     sb.ToString());
-                LLMNPCsPlugin.LogToFile($"[WorldMap] grid exported for VillageForge ({SizeX}x{SizeZ})");
+                LLMNPCsPlugin.LogToFile($"[WorldMap] grid exported for VillageForge ({SizeX}x{SizeZ}x{SizeY}, 4 blocks: class/surface/cellar-depth/tower)");
             }
             catch { }
+        }
+
+        private static void AppendHexBlock(StringBuilder sb, Func<int, int, int> get)
+        {
+            for (int z = 0; z < SizeZ; z++)
+            {
+                for (int x = 0; x < SizeX; x++)
+                {
+                    int v = get(x, z);
+                    sb.Append(v < 0 || v > 15 ? 'F' : "0123456789ABCDEF"[v]);
+                }
+                sb.Append('\n');
+            }
         }
 
         // Downsampled ASCII overview so a HUMAN can validate the full-map read.

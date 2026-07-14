@@ -1717,7 +1717,7 @@ namespace GoingMedieval.LLM_NPCs
                 return;
 
             var caller = GetCallingMethodName();
-            LLMNPCsPlugin.LogToFile($"[GameBridge] Rejected worker type candidate {type.FullName} from {source} (caller: {caller}): {reason}");
+            LLMNPCsPlugin.LogDebug($"[GameBridge] Rejected worker type candidate {type.FullName} from {source} (caller: {caller}): {reason}");
         }
 
         private static bool IsWorkerLikeObject(object item)

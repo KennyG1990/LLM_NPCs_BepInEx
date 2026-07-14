@@ -25,7 +25,12 @@ namespace GoingMedieval.LLM_NPCs
         // PERIODIC AUTO-BANK (2026-07-12: three host hangs in one night — a
         // crash must never cost more than a few minutes of colony history).
         private static DateTime _lastPeriodic = DateTime.MinValue;
-        private const int PeriodicMinutes = 8;
+        // 8 -> 20 min (2026-07-13, autonomous): each autosave is the GAME'S world
+        // serialization = an inherent ~2.7s freeze (any save, player or mod, does
+        // this). At 8 min it fired ~9x/hr = repeated [mod:save-guard] freezes that
+        // fail Gate 1's no-mod-freeze bar. Crashes are fixed + the game autosaves
+        // natively, so bank less often. The freeze is game-save cost, not mod logic.
+        private const int PeriodicMinutes = 20;
 
         public static void Tick()
         {

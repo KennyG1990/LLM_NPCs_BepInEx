@@ -26,7 +26,7 @@ namespace GoingMedieval.LLM_NPCs
         public static string LastResult = "(idle)";
         private static string _lastDiag = "?";
         private static readonly HashSet<string> _routed = new HashSet<string>();
-        public static void Reset() { _routed.Clear(); LastResult = "(idle)"; }
+        public static void Reset() { _routed.Clear(); _cookName = _foragerName = _boostedName = null; LastResult = "(idle)"; }
 
         private static readonly (string skill, int[] jobs)[] Map =
         {
@@ -37,12 +37,18 @@ namespace GoingMedieval.LLM_NPCs
         };
 
         // CRISIS (#37): when the colony is starving, skill/passion routing YIELDS.
-        // Everyone's food jobs go to priority 1 (hunt, harvest, plant, cook, haul,
-        // animals — a farmer can BREED livestock, per Ken); research/art drop to 4.
-        // Applied once per crisis entry, restored by normal RouteAll on exit.
+        // Everyone's SAFE food jobs go to priority 1 (harvest, plant, cook, haul,
+        // animals, fish); research/art drop to 4. Applied once per crisis entry.
         private static bool _crisisApplied = false;
-        private static readonly int[] CrisisFoodJobs = { 0x20, 0x10, 0x40, 0x400, 1, 0x10000, 0x100000 }; // Hunting,Harvesting,PlantCropfields,Cooking,Hauling,Animal,Fishing
-        private static readonly int[] CrisisSuspendJobs = { 0x1000, 0x20000 };                            // Research, Art
+        // HUNTING (0x20) is NOT here (Ken, live 2026-07-13: low-skill settlers
+        // forced to hunt were engaging boars and DYING). Hunting is gated to
+        // skilled marksmen separately — see ApplyHuntGate.
+        private static readonly int[] SafeFoodJobs = { 0x10, 0x40, 0x400, 1, 0x10000, 0x100000 }; // Harvesting,PlantCropfields,Cooking,Hauling,Animal,Fishing
+        private static readonly int[] CrisisSuspendJobs = { 0x1000, 0x20000 };                    // Research, Art
+        private const int HuntJob = 0x20;
+        // Marksman below this NEVER hunts (a competent colony hunts with its
+        // skilled bowman; the rest do safe food work). Prevents boar deaths.
+        private const int HuntGateLevel = 6;
 
         public static string CrisisRouteAll(List<Settler> settlers)
         {
@@ -59,8 +65,9 @@ namespace GoingMedieval.LLM_NPCs
                     var agent = GameBridge.GetGoapAgent(rc);
                     var change = agent?.GetType().GetMethod("ChangeJobPriority", BindingFlags.Public | BindingFlags.Instance);
                     if (change == null) continue;
-                    foreach (var j in CrisisFoodJobs)
+                    foreach (var j in SafeFoodJobs)
                         try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, j), (object)1 }); } catch { }
+                    ApplyHuntGate(change, agent, jobTypeT, rc, 1);   // hunting only for skilled marksmen
                     foreach (var j in CrisisSuspendJobs)
                         try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, j), (object)4 }); } catch { }
                     applied++;
@@ -69,7 +76,7 @@ namespace GoingMedieval.LLM_NPCs
                 {
                     _crisisApplied = true;
                     _routed.Clear();   // normal routing re-applies after the crisis
-                    LastResult = $"jobs: ⚠CRISIS — ALL {applied} settler(s) to food work (hunt/harvest/plant/cook/haul/animals prio 1, research/art suspended)";
+                    LastResult = $"jobs: ⚠CRISIS — {applied} settler(s) to SAFE food work (harvest/plant/cook/haul/animals/fish prio 1; hunting skilled-marksmen only; research/art suspended)";
                     LLMNPCsPlugin.LogToFile("[JobRouter] " + LastResult);
                 }
                 return LastResult;
@@ -100,14 +107,15 @@ namespace GoingMedieval.LLM_NPCs
                     var agent = GameBridge.GetGoapAgent(rc);
                     var change = agent?.GetType().GetMethod("ChangeJobPriority", BindingFlags.Public | BindingFlags.Instance);
                     if (change == null) continue;
-                    foreach (var j in CrisisFoodJobs)
+                    foreach (var j in SafeFoodJobs)
                         try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, j), (object)2 }); } catch { }
+                    ApplyHuntGate(change, agent, jobTypeT, rc, 2);   // hunting only for skilled marksmen
                     applied++;
                 }
                 if (applied > 0)
                 {
                     _foodPressureApplied = true;
-                    LastResult = $"jobs: FOOD WARNING (3-day buffer breached) — food jobs to prio 2 for {applied} settler(s); research/art continue";
+                    LastResult = $"jobs: FOOD WARNING (3-day buffer breached) — safe food jobs to prio 2 for {applied} settler(s); hunting skilled-marksmen only; research/art continue";
                     LLMNPCsPlugin.LogToFile("[JobRouter] " + LastResult);
                 }
                 return LastResult;
@@ -176,6 +184,9 @@ namespace GoingMedieval.LLM_NPCs
         }
 
         private static bool SetConstructPrio(List<Settler> settlers, string name, Type jobTypeT, int prio)
+            => SetJobPrio(settlers, name, jobTypeT, (int)JobTypeConstruction, prio);
+
+        private static bool SetJobPrio(List<Settler> settlers, string name, Type jobTypeT, int job, int prio)
         {
             foreach (var s in settlers)
             {
@@ -184,13 +195,68 @@ namespace GoingMedieval.LLM_NPCs
                 var agent = GameBridge.GetGoapAgent(rc);
                 var change = agent?.GetType().GetMethod("ChangeJobPriority", BindingFlags.Public | BindingFlags.Instance);
                 if (change == null) return false;
-                try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, JobTypeConstruction), (object)prio }); return true; }
+                try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, job), (object)prio }); return true; }
                 catch { return false; }
             }
             return false;
         }
 
-        private static int ReadConstructionLevel(object rc)
+        /// <summary>Best-skill settler for `skillId`, excluding names in `taken`.
+        /// Returns null if none resolvable.</summary>
+        private static string BestSkilled(List<Settler> settlers, string skillId, HashSet<string> taken)
+        {
+            string best = null; int bestLvl = -1;
+            foreach (var s in settlers)
+            {
+                if (s == null || s.gameObject == null) continue;
+                if (!GameBridge.TryGetValidatedSettlerIdentity(s.gameObject, out _, out var name, out var rc)) continue;
+                if (taken.Contains(name)) continue;
+                int lvl = ReadSkillLevel(rc, skillId);
+                if (lvl > bestLvl) { bestLvl = lvl; best = name; }
+            }
+            return best;
+        }
+
+        // ── LABOR DIVISION (Ken, live 2026-07-13: "everyone is hauling... we have
+        // to split up the workload"). Pin DISTINCT settlers to the essential
+        // concurrent duties so the colony runs several tasks in parallel instead
+        // of all converging on hauling. Builder is pinned by EnsureBuildPressure;
+        // this adds a distinct COOK and FORAGER. Leftover settlers keep skill
+        // routing (hauling as the game needs it). Re-applied only when the
+        // assignment changes, so no per-tick thrash.
+        private static string _cookName, _foragerName;
+
+        public static string DivideLabor(List<Settler> settlers)
+        {
+            try
+            {
+                var jobTypeT = FindType("NSMedieval.State.WorkerJobs.JobType");
+                if (jobTypeT == null || settlers == null || settlers.Count < 3) return LastResult;
+                var taken = new HashSet<string>(StringComparer.Ordinal);
+                if (_boostedName != null) taken.Add(_boostedName);   // the pinned builder
+                string cook = BestSkilled(settlers, "Culinary", taken);
+                if (cook != null) { taken.Add(cook); if (cook != _cookName) { SetJobPrio(settlers, cook, jobTypeT, 0x400, 1); _cookName = cook; } }
+                string forager = BestSkilled(settlers, "Botany", taken);
+                if (forager != null) { taken.Add(forager); if (forager != _foragerName) { SetJobPrio(settlers, forager, jobTypeT, 0x10, 1); _foragerName = forager; } }
+                return LastResult = $"labor split: builder={_boostedName ?? "-"} cook={cook ?? "-"} forager={forager ?? "-"} (rest: skill/haul)";
+            }
+            catch (Exception ex) { return LastResult = "labor split EXC: " + (ex.InnerException?.Message ?? ex.Message); }
+        }
+
+        /// <summary>Set the Hunting job for one settler: priority `p` ONLY if their
+        /// Marksman skill clears HuntGateLevel; otherwise Hunting = 4 (never), so
+        /// low-skill settlers are never sent at wild game. The colony's skilled
+        /// bowman hunts; everyone else does safe food work.</summary>
+        private static void ApplyHuntGate(MethodInfo change, object agent, Type jobTypeT, object rc, int p)
+        {
+            int marks = ReadSkillLevel(rc, "Marksman");
+            int prio = marks >= HuntGateLevel ? p : 4;
+            try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, HuntJob), (object)prio }); } catch { }
+        }
+
+        private static int ReadConstructionLevel(object rc) => ReadSkillLevel(rc, "Construction");
+
+        private static int ReadSkillLevel(object rc, string skillId)
         {
             try
             {
@@ -213,7 +279,7 @@ namespace GoingMedieval.LLM_NPCs
                 foreach (var sk in list)
                 {
                     if (sk == null) continue;
-                    if (HG(sk, "Id")?.ToString()?.Replace(" ", "") != "Construction") continue;
+                    if (HG(sk, "Id")?.ToString()?.Replace(" ", "") != skillId) continue;
                     try { return Convert.ToInt32(HG(sk, "Level") ?? 0); } catch { return 0; }
                 }
             }
@@ -303,6 +369,11 @@ namespace GoingMedieval.LLM_NPCs
                 if (!have.TryGetValue(skill, out var v)) continue;
                 // 1=first (high skill or passionate), 2=good, 3=default, 4=hates it
                 int prio = v.pref < 0 ? 4 : (v.lvl >= 10 || v.pref >= 2) ? 1 : (v.lvl >= 5 || v.pref == 1) ? 2 : 3;
+                // HUNT SAFETY GATE (Ken, live 2026-07-13): a passion for hunting
+                // does NOT make a low-skill settler survive a boar. Marksman below
+                // HuntGateLevel never gets Hunting elevated — forced to 4 (never),
+                // so only the skilled bowman hunts. Deaths came from exactly this.
+                if (skill == "Marksman" && v.lvl < HuntGateLevel) prio = 4;
                 foreach (var j in jobs)
                 {
                     try { change.Invoke(agent, new[] { Enum.ToObject(jobTypeT, j), (object)prio }); applied++; }

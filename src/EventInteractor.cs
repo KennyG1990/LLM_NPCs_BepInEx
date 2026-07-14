@@ -87,6 +87,7 @@ namespace GoingMedieval.LLM_NPCs
                         _seen[key] = p;
                         LLMNPCsPlugin.LogToFile($"[EventInteractor] EVENT DETECTED '{p.Title}' dialogs={p.DialogCount} options=[{string.Join(" | ", p.Options)}] body: {Trunc(p.Body, 300)}");
                         ReportWorldEvent(p, decided: false);   // P5: settlers now KNOW this happened
+                        GameTruthBridge.ReportRaidIfRaid(p.Title, p.Body);   // Gate 3: raids feed diplomacy
                     }
 
                     // ANSWERABILITY GATE (coherence, 2026-07-11): decide ONLY

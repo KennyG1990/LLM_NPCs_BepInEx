@@ -1,0 +1,14 @@
+home.x=128
+home.y=5
+home.z=127
+farm.placed=1
+village.cx=120
+village.cy=5
+village.cz=120
+house.ox=81
+house.oz=110
+house.ay=5
+house.ver=3
+house.pw=7
+house.ph=6
+house.pf=1

@@ -54,6 +54,12 @@ namespace GoingMedieval.LLM_NPCs
             return null;
         }
 
+        private static bool MarkerExists(MethodInfo exists, object mgr, object cell)
+        {
+            try { return exists != null && (bool)exists.Invoke(mgr, new[] { cell }); }
+            catch { return false; }
+        }
+
         /// <summary>Designate a 3x3 cellar dig into a hill face near home.
         /// Returns a status string; marks at most one cellar per save.</summary>
         public static string DigCellarNear(int hx, int hy, int hz, int radius)
@@ -94,14 +100,17 @@ namespace GoingMedieval.LLM_NPCs
                 var map = village?.GetType().GetProperty("Map")?.GetValue(village, null);
                 if (map == null) return LastResult = "cellar: no map";
                 var vec3T = FindTypeByName("Vec3Int");
-                var getNode = map.GetType().GetMethod("GetNode", new[] { vec3T });
+                // GetNode(int,int,int) — the Vec3Int overload is by-ref (in Vec3Int)
+                // so a by-value type lookup returns null and NodeSolid would always
+                // read false = cellar never finds ground = never dug. (2026-07-13)
+                var getNode = map.GetType().GetMethod("GetNode", new[] { typeof(int), typeof(int), typeof(int) });
                 object MakeCell(int x, int y, int z)
                 { return vec3T.GetConstructor(new[] { typeof(int), typeof(int), typeof(int) })?.Invoke(new object[] { x, y, z }); }
                 bool NodeSolid(int x, int y, int z)
                 {
                     try
                     {
-                        var n = getNode?.Invoke(map, new[] { MakeCell(x, y, z) });
+                        var n = getNode?.Invoke(map, new object[] { x, y, z });
                         if (n == null) return false;
                         var vt = n.GetType().GetProperty("VoxelTypeIdByte")?.GetValue(n, null);
                         return vt != null && Convert.ToInt32(vt) != 0;   // 0 = air (ground truth: LoadSavedDigMarkers)
@@ -185,9 +194,48 @@ namespace GoingMedieval.LLM_NPCs
                             }
                         }
                 }
+                // FLAT-TERRAIN CELLAR (v2, Ken's guide 2026-07-13: "dig a straight
+                // stair shaft down, 2+ levels" — hill-face mining fails on flat
+                // grassland like Tranent, so the cellar never got dug = Gate 1 gap).
+                // Dig a DESCENDING STAIRCASE of single reachable cells (each one
+                // level down + one tile over, so every dig cell is reachable from
+                // the one above) into a small room at the bottom. Real DigGoal labor;
+                // the surrounding earth is the cellar wall (guide: wall it fully).
+                int cellarDepth = 2;                 // 2 levels down = spoilage-proof (guide)
+                int sx = hx + 2, sz = hz;            // start a couple tiles from home, clear of the house
+                int marked2 = 0, lastX = sx, lastZ = sz;
+                for (int dy = 1; dy <= cellarDepth; dy++)
+                {
+                    int cx = sx + dy, cy = hy - dy, cz = sz;   // step one over per level down (reachable staircase)
+                    if (NodeSolid(cx, cy, cz) && !(exists != null && MarkerExists(exists, mgr, MakeCell(cx, cy, cz))))
+                    {
+                        try { create.Invoke(mgr, new object[] { modelId, null, (Vector3)getWorld.Invoke(null, new[] { MakeCell(cx, cy, cz) }) }); marked2++; lastX = cx; lastZ = cz; }
+                        catch { }
+                    }
+                }
+                // a 3x3 room at the bottom level (reachable off the last stair cell)
+                int roomY = hy - cellarDepth;
+                for (int ddx = 0; ddx <= 2; ddx++)
+                    for (int ddz = -1; ddz <= 1; ddz++)
+                    {
+                        int cx = lastX + ddx, cz = lastZ + ddz;
+                        if (!NodeSolid(cx, roomY, cz)) continue;
+                        var cell = MakeCell(cx, roomY, cz);
+                        if (exists != null && MarkerExists(exists, mgr, cell)) continue;
+                        try { create.Invoke(mgr, new object[] { modelId, null, (Vector3)getWorld.Invoke(null, new[] { cell }) }); marked2++; }
+                        catch { }
+                    }
+                if (marked2 > 0)
+                {
+                    _doneThisSession = true;
+                    BuiltState.CellarMarked = true;
+                    LastResult = $"cellar: marked {marked2} dig cells DOWN {cellarDepth} levels (staircase + room) near home at ({sx},{sz}) — settlers will mine it (flat-terrain cellar)";
+                    LLMNPCsPlugin.LogToFile("[CellarBuilder] " + LastResult);
+                    return LastResult;
+                }
                 _doneThisSession = true;    // don't rescan every tick on a flat map
-                LLMNPCsPlugin.LogToFile($"[CellarBuilder] scan complete — no hill face (radius {radius})");
-                return LastResult = "cellar: no minable hill face near home (flat terrain) — needs stairs support (v2)";
+                LLMNPCsPlugin.LogToFile($"[CellarBuilder] scan complete — no hill face AND down-dig found no solid ground (radius {radius})");
+                return LastResult = "cellar: no diggable ground near home (unexpected on land)";
             }
             catch (Exception ex) { return LastResult = "cellar EXC: " + (ex.InnerException?.Message ?? ex.Message); }
         }

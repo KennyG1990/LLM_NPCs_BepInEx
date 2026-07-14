@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using UnityEngine;
@@ -224,6 +225,164 @@ namespace GoingMedieval.LLM_NPCs
             catch (Exception ex) { LLMNPCsPlugin.LogToFile("[BuildingIds] EXC: " + ex.Message); }
         }
 
+        // RECONCILE step 8.0 of docs/WORKSTATION_PLACEMENT_PLAN.md — GROUND TRUTH.
+        // Reads the real Size + ForbiddenAreaInfo + work-position geometry off each
+        // workstation blueprint (the numbers the game itself uses to keep buildings
+        // from crowding). Writes validation/workstation_geometry.txt so the placement
+        // algorithm + forge2.py size rooms from real data, not guesses.
+        private static readonly string[] _workstationIds = {
+            // KITCHEN/LARDER
+            "camp_fire","limestone_stove","limestone_block_stove","clay_brick_stove","butchering_table",
+            "smokehouse","limestone_smokehouse","brewing_station","fermenting_station","spirit_destilary",
+            "oil_press","ice_station","skep",
+            // FOUNDRY/SMITHY
+            "smelting_station","limestone_smelting_station","kiln","limestone_kiln","blacksmith_station",
+            "clay_brick_blacksmith_station","minting_station","saltpeter_pit",
+            // WORKSHOP
+            "woodwork_bench","stonemasons_bench",
+            // TEXTILE/ARMORY
+            "sewing_station","fletchers_table","armourer_table",
+            // CARE/ART/STUDY
+            "apothecary_bench","easel","basic_research_table","research_table","advanced_research_table","grand_research_table",
+        };
+
+        private static string ReadVec3(object v)
+        {
+            if (v == null) return "null";
+            try { return $"{ReadIntField(v, "x", "X")},{ReadIntField(v, "y", "Y")},{ReadIntField(v, "z", "Z")}"; }
+            catch { return v.ToString(); }
+        }
+
+        // WorkPositionsArray elements are TransformSettings (a struct holding a
+        // position Vector3 + rotation). Read the position offset (relative to the
+        // building origin) so we know WHICH cell/side the worker stands in.
+        private static string ReadTransformPos(object ts)
+        {
+            if (ts == null) return "null";
+            try
+            {
+                var t = ts.GetType();
+                object pos = null;
+                foreach (var nm in new[] { "position", "Position", "localPosition", "LocalPosition", "pos", "offset", "Offset" })
+                {
+                    var p = t.GetProperty(nm); if (p != null) { pos = p.GetValue(ts, null); if (pos != null) break; }
+                    var f = t.GetField(nm); if (f != null) { pos = f.GetValue(ts); if (pos != null) break; }
+                }
+                if (pos == null) return "(" + t.Name + "?)";
+                var pt = pos.GetType();
+                float rx = ReadFloat(pos, pt, "x", "X"), ry = ReadFloat(pos, pt, "y", "Y"), rz = ReadFloat(pos, pt, "z", "Z");
+                return $"{rx:0.#},{ry:0.#},{rz:0.#}";
+            }
+            catch { return "err"; }
+        }
+        private static float ReadFloat(object o, Type t, params string[] names)
+        {
+            foreach (var n in names)
+            {
+                var p = t.GetProperty(n); if (p != null) { try { return Convert.ToSingle(p.GetValue(o, null)); } catch { } }
+                var f = t.GetField(n); if (f != null) { try { return Convert.ToSingle(f.GetValue(o)); } catch { } }
+            }
+            return 0f;
+        }
+
+        public static void DumpWorkstationGeometry()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("# workstation geometry (ground truth from BaseBuildingRepository blueprints)");
+            sb.AppendLine("# fields: id | Size(x,y,z) | Forbidden F/B/L/R | workPositions | (schema on miss)");
+            bool schemaDumped = false;
+            foreach (var id in _workstationIds)
+            {
+                object bp = null;
+                try { bp = GetBuildingBlueprint(id); } catch { }
+                if (bp == null) { sb.AppendLine($"{id} | MISSING ({LastBuildingDiag})"); continue; }
+                var t = bp.GetType();
+
+                // one-time schema dump so we learn the real property/field names
+                if (!schemaDumped)
+                {
+                    schemaDumped = true;
+                    sb.AppendLine($"### SCHEMA of {t.Name} (props):");
+                    foreach (var p in t.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                        sb.AppendLine($"###   prop {p.PropertyType.Name} {p.Name}");
+                    sb.AppendLine($"### SCHEMA of {t.Name} (fields):");
+                    for (var ft = t; ft != null && ft.Name != "Object"; ft = ft.BaseType)
+                        foreach (var f in ft.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                            sb.AppendLine($"###   field {f.FieldType.Name} {f.Name}");
+                    sb.AppendLine("### ---");
+                }
+
+                // Size
+                string size = "?";
+                try { var sp = t.GetProperty("Size"); if (sp != null) size = ReadVec3(sp.GetValue(bp, null)); } catch { }
+
+                // ForbiddenAreaInfo -> F/B/L/R offsets
+                string forb = "?";
+                try
+                {
+                    var fp = t.GetProperty("ForbiddenAreaInfo");
+                    var fi = fp?.GetValue(bp, null);
+                    if (fi != null)
+                    {
+                        var ft2 = fi.GetType();
+                        int F = ReadOffset(fi, ft2, "ForbiddenAreaFrontOffset", "HasFrontOffset");
+                        int B = ReadOffset(fi, ft2, "ForbiddenAreaBackOffset", "HasBackOffset");
+                        int L = ReadOffset(fi, ft2, "ForbiddenAreaLeftOffset", "HasLeftOffset");
+                        int R = ReadOffset(fi, ft2, "ForbiddenAreaRightOffset", "HasRightOffset");
+                        forb = $"F{F}/B{B}/L{L}/R{R}";
+                    }
+                }
+                catch { }
+
+                // work positions — discover by name pattern (Work / Interaction / Position)
+                string work = "?";
+                try
+                {
+                    foreach (var p in t.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                    {
+                        var n = p.Name;
+                        if (n.IndexOf("Work", StringComparison.OrdinalIgnoreCase) < 0 &&
+                            n.IndexOf("Interaction", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        object val; try { val = p.GetValue(bp, null); } catch { continue; }
+                        if (val == null) continue;
+                        if (val is System.Collections.IEnumerable en && !(val is string))
+                        {
+                            var parts = new System.Collections.Generic.List<string>();
+                            foreach (var e in en) parts.Add(ReadTransformPos(e));
+                            work = $"{n}=[{string.Join(";", parts.ToArray())}]";
+                        }
+                        else work = $"{n}={val}";
+                        break;
+                    }
+                }
+                catch { }
+
+                sb.AppendLine($"{id} | Size {size} | Forbidden {forb} | {work}");
+            }
+            try
+            {
+                System.IO.File.WriteAllText(
+                    @"F:\DEV_ENV\projects\Mods\Going Medieval\LLM_NPCs_BepInEx\validation\workstation_geometry.txt", sb.ToString());
+                LLMNPCsPlugin.LogToFile("[WorkstationGeometry] dumped " + _workstationIds.Length + " stations");
+            }
+            catch (Exception ex) { LLMNPCsPlugin.LogToFile("[WorkstationGeometry] write EXC: " + ex.Message); }
+        }
+
+        private static int ReadOffset(object fi, Type ft, string offsetProp, string hasProp)
+        {
+            try
+            {
+                var hp = ft.GetProperty(hasProp);
+                if (hp != null && hp.GetValue(fi, null) is bool has && !has) return 0;
+                var op = ft.GetProperty(offsetProp);
+                if (op != null) { var v = op.GetValue(fi, null); if (v != null) return Convert.ToInt32(v); }
+                var of = ft.GetField(offsetProp);
+                if (of != null) { var v = of.GetValue(fi); if (v != null) return Convert.ToInt32(v); }
+            }
+            catch { }
+            return -1;   // -1 = couldn't read (distinguish from a real 0)
+        }
+
         /// <summary>Get a building blueprint (BaseBuildingBlueprint) from the
         /// game's BaseBuildingRepository by id, listing available ids on miss.</summary>
         private static object GetBuildingBlueprint(string id)
@@ -281,6 +440,13 @@ namespace GoingMedieval.LLM_NPCs
         /// BuildingsManagerMain.CanPlace still gates the cell (rejects water /
         /// invalid terrain), and SpawnFromPool returning null is a second gate.
         /// </summary>
+        // Per-buildingId resume radius for the budgeted spiral below — a paused
+        // search continues where it stopped instead of rescanning ring 1.
+        private static readonly Dictionary<string, int> _nearResume = new Dictionary<string, int>();
+        private static readonly int[][] _orthogonal = { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 } };
+        // Cropfield detection cache (workstations must not sit on/beside the farm).
+        private static object _cropOwner; private static MethodInfo _cropExists; private static bool _cropInit;
+
         public static string TryPlaceBuildingNear(GameObject settlerGo, string buildingId)
         {
             try
@@ -309,6 +475,23 @@ namespace GoingMedieval.LLM_NPCs
 
                 // Scan outward from the settler for the first cell CanPlace accepts
                 // (dry land, valid stability/terrain — no water, no impossible tile).
+                // BUDGET + RESUME (2026-07-13, freeze `mod:plan-manager` 2906ms):
+                // this spiral predated the per-origin-budget law — a failing pass
+                // is ~840 cells × 3+ reflected queries under water-sim contention,
+                // re-run EVERY tick on maps where the id can't fit (Tranent: 71%
+                // water). Snapshot prefilter first (array read), 40ms budget per
+                // ORIGIN, resume radius per buildingId across calls.
+                var swNear = System.Diagnostics.Stopwatch.StartNew();
+                // PER-CELL resume (2026-07-13, Edenham deadlock): a paused search
+                // must continue PAST the last cell it examined, not restart the
+                // ring. The old resume saved only `radius`, so a single cell whose
+                // game-side CanPlace is pathologically slow (~2.3s on marsh) blew
+                // the 40ms budget, saved the ring, and got RE-TRIED every tick —
+                // the whole colony deadlocked at ring 1 for days. We now save a
+                // flat cell index and skip (counter-only, no CanPlace) up to it,
+                // guaranteeing forward progress even past a >budget cell.
+                int resumeAt; if (!_nearResume.TryGetValue(buildingId, out resumeAt)) resumeAt = 0;
+                int seq = 0;
                 for (int radius = 1; radius <= 14; radius++)
                 {
                     for (int dx = -radius; dx <= radius; dx++)
@@ -316,7 +499,15 @@ namespace GoingMedieval.LLM_NPCs
                                  ? Enumerable.Range(-radius, radius * 2 + 1)
                                  : new[] { -radius, radius }.AsEnumerable()))
                         {
+                            seq++;
+                            if (seq <= resumeAt) continue;   // examined in a prior tick — skip cheaply
+                            if (swNear.ElapsedMilliseconds > 40)
+                            {
+                                _nearResume[buildingId] = seq - 1;   // last cell fully processed
+                                return $"search paused at radius {radius}/14 (cell {seq}) for '{buildingId}' (time budget; resumes next tick)";
+                            }
                             int cx = ax + dx, cz = az + dz;
+                            if (!WorldMap.SnapshotBuildableDry(cx, ay, cz)) continue;   // array read — skip water/built for free
                             var cell = MakeVec3Int(cx, ay, cz);
                             if (cell == null) return "Vec3Int null";
                             bool ok;
@@ -332,14 +523,40 @@ namespace GoingMedieval.LLM_NPCs
                             // tolerated the door cell). Ground truth: BuildingExists.
                             if (AnyBuildingAt(cx, ay, cz)) continue;
 
+                            // WORKSTATION COHERENCE (Ken, 2026-07-13 eyes-on: research
+                            // table ON the cabbage farm, tables crammed edge-to-edge
+                            // with no room to stand, sitting unbuilt for hours). A
+                            // workstation must be (a) OFF crop fields, (b) SPACED — no
+                            // other building in its 8 neighbours, and (c) WORK-ACCESSIBLE
+                            // — at least one orthogonal neighbour is free walkable ground
+                            // for the settler to stand and build/operate. Without the
+                            // access cell the blueprint is literally unbuildable, which
+                            // is why they sat forever.
+                            if (AnyCropfieldNear(cx, ay, cz)) continue;   // (a) not on/beside the farm
+                            bool crowded = false;
+                            for (int nx = -1; nx <= 1 && !crowded; nx++)
+                                for (int nz = -1; nz <= 1 && !crowded; nz++)
+                                    if ((nx != 0 || nz != 0) && AnyBuildingAt(cx + nx, ay, cz + nz)) crowded = true;
+                            if (crowded) continue;                        // (b) spacing: >=1 gap to any table
+                            bool hasStand = false;
+                            foreach (var d in _orthogonal)
+                            {
+                                int wx = cx + d[0], wz = cz + d[1];
+                                if (IsDryBuildableGround(wx, ay, wz) && !IsOnStockpile(wx, ay, wz)
+                                    && !AnyBuildingAt(wx, ay, wz)) { hasStand = true; break; }
+                            }
+                            if (!hasStand) continue;                      // (c) nowhere to stand & work
+
                             string commit = CommitPlayerBlueprint(map, bmm, blueprint, cell, 0);
                             if (commit != null) { LastBuildingDiag = commit; continue; } // this cell was blocked; try next
 
                             string bid = null;
                             try { bid = blueprint.GetType().GetMethod("GetID")?.Invoke(blueprint, null) as string; } catch { }
+                            _nearResume.Remove(buildingId);   // success — next search starts fresh
                             return $"ok: building blueprint '{bid}' committed at ({cx},{ay},{cz}) — NO cursor; settlers will construct it";
                         }
                 }
+                _nearResume.Remove(buildingId);   // full pass finished — start over next time
                 return $"no valid CanPlace cell within 14 of settler ({ax},{ay},{az}) for the building :: {LastBuildingDiag}";
             }
             catch (Exception ex) { return "building placement error: " + (ex.InnerException?.Message ?? ex.Message); }
@@ -410,22 +627,19 @@ namespace GoingMedieval.LLM_NPCs
                 // DragSpawnRoof's SpawnFromPool returns null or CanPlaceRoof rejects
                 // — 'ok: invoked' was a LIE; roofs never landed, Ken saw rain on
                 // beds). Count RoofComponentManager instances before/after.
-                // ROOT CAUSE (decompiled CreateRoofs, task #26): the roof BUILDING is
-                // created regardless, but it's only QUEUED for settlers to construct
-                // `if (autoconstruct)`. SpawnRoofAutoTesting never sets that flag, so we
-                // created a roof ghost that never got built — "rain on beds". Set the
-                // manager's Autoconstruct=true before the call (save/restore).
-                var acProp = bpmType.GetProperty("Autoconstruct", BindingFlags.Public | BindingFlags.Instance);
-                bool prevAc = false;
-                if (acProp != null) { try { prevAc = (bool)acProp.GetValue(bpm, null); acProp.SetValue(bpm, true, null); } catch { } }
-
+                // HONEST ROOFS (Ken, 2026-07-13): do NOT set Autoconstruct=true (that
+                // instant-finished the roof for free). Place the roof as a blueprint,
+                // then KickRoofRow gives it a real DeliverResourceJob so settlers haul
+                // wood and build it — same economy as walls.
                 int before = CountRoofComponents();
                 try { method.Invoke(bpm, new[] { blueprint, cell, (object)0, scale, positions }); }
-                catch (Exception se) { if (acProp != null) { try { acProp.SetValue(bpm, prevAc, null); } catch { } } return "SpawnRoofAutoTesting exc: " + (se.InnerException?.Message ?? se.Message); }
+                catch (Exception se) { return "SpawnRoofAutoTesting exc: " + (se.InnerException?.Message ?? se.Message); }
                 int after = CountRoofComponents();
-                if (acProp != null) { try { acProp.SetValue(bpm, prevAc, null); } catch { } }   // restore
                 if (after > before)
-                    return $"ok: roof QUEUED @({cx},{cy},{cz}) (components {before}->{after}, autoconstruct=on — settlers will build it)";
+                {
+                    KickRoofRow(cx, cx, cy, cz, roofId, out _);   // create the deliver-resource job (honest)
+                    return $"ok: roof blueprint @({cx},{cy},{cz}) (components {before}->{after}) — settlers will haul + build it";
+                }
                 return $"roof REJECTED @({cx},{cy},{cz}) (components {before}->{after}: CanPlaceRoof false — walls/support missing?)";
             }
             catch (Exception ex) { return "roof err: " + (ex.InnerException?.Message ?? ex.Message); }
@@ -476,16 +690,18 @@ namespace GoingMedieval.LLM_NPCs
                 var add = listType.GetMethod("Add");
                 for (int x = x0; x <= x1; x++) add.Invoke(positions, new[] { MakeVec3Int(x, y, z) });
 
-                var acProp = bpmType.GetProperty("Autoconstruct", BindingFlags.Public | BindingFlags.Instance);
-                bool prevAc = false;
-                if (acProp != null) { try { prevAc = (bool)acProp.GetValue(bpm, null); acProp.SetValue(bpm, true, null); } catch { } }
+                // HONEST ROOFS: no Autoconstruct (that was the free-build). Place the
+                // strip as blueprints, then KickRoofRow across the row creates the
+                // deliver-resource jobs — settlers haul wood + build it.
                 int before = CountRoofComponents();
                 try { method.Invoke(bpm, new[] { blueprint, gridPos, (object)0, scale, positions }); }
-                catch (Exception se) { if (acProp != null) { try { acProp.SetValue(bpm, prevAc, null); } catch { } } return "strip exc: " + (se.InnerException?.Message ?? se.Message); }
+                catch (Exception se) { return "strip exc: " + (se.InnerException?.Message ?? se.Message); }
                 int after = CountRoofComponents();
-                if (acProp != null) { try { acProp.SetValue(bpm, prevAc, null); } catch { } }
                 if (after > before)
-                    return $"ok: roof STRIP x{x0}..{x1} z={z} y={y} len={len} h={height} (components {before}->{after}, autoconstruct — settlers will build)";
+                {
+                    KickRoofRow(x0, x1, y, z, roofId, out _);   // deliver-resource jobs (honest)
+                    return $"ok: roof STRIP x{x0}..{x1} z={z} y={y} len={len} h={height} (components {before}->{after}) — settlers will haul + build";
+                }
                 // GROUND TRUTH the rejection: CreateRoofs collapses the view to the
                 // SINGLE cell gridPos before CanPlaceRoof runs (decompiled
                 // BuildingPlacementManager.CreateRoofs:859-866), so replicate every
@@ -502,6 +718,35 @@ namespace GoingMedieval.LLM_NPCs
         /// game's own BaseBuildingInstance.AutoConstructSequence() on unqueued
         /// blueprints (the exact call the autoconstruct path makes —
         /// BuildingPlacementManager.AutoConstructBuildInOrder:646).</summary>
+        private static Type _constructionPhaseType;
+        /// <summary>Put a placed building/roof instance into ConstructionPhase.Blueprint
+        /// with autoConstruct=FALSE — the honest path: the game's UpdateJobManager
+        /// then creates a DeliverResourceJob (settlers haul materials) and, once
+        /// delivered, a ConstructBuildingJob (settlers build). NO free-building.
+        /// Ground truth: decompiled BaseBuildingInstance.SetConstructionPhase.</summary>
+        public static bool SetBlueprintPhase(object inst)
+        {
+            try
+            {
+                if (inst == null) return false;
+                var m = inst.GetType().GetMethod("SetConstructionPhase");
+                if (m == null) return false;
+                // resolve the ConstructionPhase enum from the instance's own property
+                _constructionPhaseType = _constructionPhaseType
+                    ?? inst.GetType().GetProperty("ConstructionPhase")?.GetValue(inst, null)?.GetType()
+                    ?? FindTypeByName("ConstructionPhase");
+                if (_constructionPhaseType == null) return false;
+                object blueprint = Enum.Parse(_constructionPhaseType, "Blueprint");
+                m.Invoke(inst, new object[] { blueprint, false });   // autoConstruct: false
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LLMNPCsPlugin.LogToFile($"[StockpilePlacer] SetBlueprintPhase failed: {ex.InnerException?.Message ?? ex.Message}");
+                return false;
+            }
+        }
+
         public static string KickRoofRow(int x0, int x1, int y, int z, string roofId, out int have)
         {
             have = 0; int kicked = 0, queued = 0, built = 0, noStab = 0;
@@ -533,12 +778,15 @@ namespace GoingMedieval.LLM_NPCs
                         if (hasOrder) { queued++; break; }
                         bool stab = inst.GetType().GetProperty("HasStabilityToBuild")?.GetValue(inst, null) is bool s && s;
                         if (!stab) { noStab++; break; }
-                        try
-                        {
-                            inst.GetType().GetMethod("AutoConstructSequence")?.Invoke(inst, null);
-                            kicked++;
-                        }
-                        catch (Exception ke) { LLMNPCsPlugin.LogToFile($"[StockpilePlacer] AutoConstructSequence failed @({x},{y},{z}): {ke.InnerException?.Message ?? ke.Message}"); }
+                        // HONEST CONSTRUCTION (Ken, live 2026-07-13: the mod was
+                        // free-building roofs with AutoConstructSequence = instant
+                        // EnterFinishedState, no resources, no labor). The REAL fix
+                        // (decompiled BaseBuildingInstance.SetConstructionPhase ->
+                        // UpdateJobManager): set the roof to Blueprint phase so the
+                        // game creates a DELIVER-RESOURCE job — settlers haul wood,
+                        // then a CONSTRUCT job builds it. This is the exact honest
+                        // path walls already use (CacheBuildingInstance/BlueprintPlaced).
+                        if (SetBlueprintPhase(inst)) kicked++;
                         break;
                     }
                 }
@@ -731,6 +979,20 @@ namespace GoingMedieval.LLM_NPCs
         {
             try
             {
+                // *** UNIVERSAL RESEARCH GATE (Ken, 2026-07-13: "EVERYthing that requires
+                // research MUST be gated on the research itself") *** This is the single
+                // chokepoint EVERY building commit passes through — workstations
+                // (TryPlaceBuildingNear) and house/plan/defense pieces (TryPlaceBuildingAt).
+                // Gate here => nothing the colony hasn't legally unlocked can ever be
+                // placed, no per-caller opt-in required. Basic wood construction, beds,
+                // cookfire etc. are unlocked-by-default (IsUnlocked returns true), so this
+                // never blocks survival; it blocks exactly the researched items (smokehouse,
+                // sewing, advanced stations, etc.) until their tech is done. NO FALLBACK.
+                string _bpid = null;
+                try { _bpid = blueprint?.GetType().GetMethod("GetID")?.Invoke(blueprint, null) as string; } catch { }
+                if (_bpid != null && !ResearchGate.IsUnlockedCached(_bpid))
+                    return $"LOCKED: '{_bpid}' requires research the colony hasn't unlocked ({ResearchGate.LastCheck})";
+
                 var bpmType = FindType("NSMedieval.BuildingComponents.BuildingPlacementManager");
                 var bpm = bpmType?.GetProperty("Instance",
                     BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null, null);
@@ -1176,15 +1438,27 @@ namespace GoingMedieval.LLM_NPCs
             catch { return false; }
         }
 
+        // PER-TICK COUNT CACHE (2026-07-13, autonomous: freeze [mod:fletcher-count]
+        // 2500ms). GetBuildingsCount is a GAME call that's occasionally slow under
+        // contention, and the census/build-priorities call CountBuildings ~13x/tick.
+        // Memoize per tick (cleared at tick start) so each id is counted at most
+        // once — halves the game-count calls and the odds of hitting a slow one.
+        private static readonly System.Collections.Generic.Dictionary<string, int> _countCache
+            = new System.Collections.Generic.Dictionary<string, int>();
+        public static void ClearCountCache() { _countCache.Clear(); }
+
         public static int CountBuildings(string id)
         {
+            if (id != null && _countCache.TryGetValue(id, out var cached)) return cached;
             try
             {
                 var bmm = GetBuildingsManager();
                 if (bmm == null) return -1;
                 var m = bmm.GetType().GetMethod("GetBuildingsCount", new[] { typeof(string) });
                 if (m == null) return -1;
-                return (int)m.Invoke(bmm, new object[] { id });
+                int n = (int)m.Invoke(bmm, new object[] { id });
+                if (id != null && n >= 0) _countCache[id] = n;   // cache real counts only (retry -1)
+                return n;
             }
             catch { return -1; }
         }
@@ -1267,6 +1541,48 @@ namespace GoingMedieval.LLM_NPCs
                 if (bmm == null || cell == null) return false;
                 var m = bmm.GetType().GetMethod("BuildingExists", new[] { _vec3IntType ?? (_vec3IntType = FindTypeByName("Vec3Int")) });
                 return m != null && m.Invoke(bmm, new[] { cell }) is bool b && b;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>True if a CROP FIELD occupies this cell or any of its 8 neighbours.
+        /// Cropfields are the CropsController's system, NOT BuildingsManager — so
+        /// BuildingExists is false on them and workstations were landing ON the farm
+        /// (Ken, eyes-on). Uses the game's own CropfieldExists (authoritative), owner
+        /// resolved once and cached.</summary>
+        public static bool AnyCropfieldNear(int x, int y, int z)
+        {
+            try
+            {
+                if (!_cropInit)
+                {
+                    _cropInit = true;
+                    foreach (var name in new[] { "CropsController", "CropfieldManager", "CropsManager" })
+                    {
+                        var t = FindTypeByName(name);
+                        object inst = null;
+                        for (var bt = t; bt != null && inst == null; bt = bt.BaseType)
+                        {
+                            var p = bt.GetProperty("Instance", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly);
+                            if (p != null) { try { inst = p.GetValue(null, null); } catch { } }
+                        }
+                        if (inst == null) continue;
+                        MethodInfo mi = null;
+                        for (var bt = inst.GetType(); bt != null && mi == null; bt = bt.BaseType)
+                            foreach (var m in bt.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                                if (m.Name == "CropfieldExists" && m.GetParameters().Length == 1) { mi = m; break; }
+                        if (mi != null) { _cropOwner = inst; _cropExists = mi; break; }
+                    }
+                }
+                if (_cropExists == null || _cropOwner == null) return false;
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dz = -1; dz <= 1; dz++)
+                    {
+                        var cell = MakeVec3Int(x + dx, y, z + dz);
+                        if (cell == null) continue;
+                        try { if (_cropExists.Invoke(_cropOwner, new[] { cell }) is bool b && b) return true; } catch { }
+                    }
+                return false;
             }
             catch { return false; }
         }
